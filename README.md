@@ -4,7 +4,6 @@ A self-contained, offline-first tool that transforms JSON data into a readable,
 interactive table — no installs, no dependencies, no network calls required.
 
 ![HTML](https://img.shields.io/badge/HTML-Single%20File-orange)
-![Security](https://img.shields.io/badge/Security-OWASP%20Compliant-green)
 ![Offline](https://img.shields.io/badge/Mode-Offline%20Only-blue)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
