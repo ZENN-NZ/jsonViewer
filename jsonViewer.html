@@ -1,0 +1,1587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!--
+    ╔══════════════════════════════════════════════════════════════╗
+    ║  SECURITY POLICY                                             ║
+    ║  • No external resources (offline-only, no CDN)             ║
+    ║  • All user data rendered via DOM textContent (XSS-safe)    ║
+    ║  • Input size-limited and depth-validated                   ║
+    ║  • CSP enforced via meta tag                                ║
+    ║                                                             ║
+    ║  When serving from a web server, ALSO add these headers:    ║
+    ║    X-Content-Type-Options: nosniff                          ║
+    ║    X-Frame-Options: DENY                                    ║
+    ║    Permissions-Policy: geolocation=(),camera=(),mic=()      ║
+    ║    Strict-Transport-Security: max-age=31536000              ║
+    ╚══════════════════════════════════════════════════════════════╝
+    -->
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'none';
+                   style-src  'unsafe-inline';
+                   script-src 'unsafe-inline';
+                   form-action 'none';
+                   base-uri    'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>JSON → Table Converter</title>
+    <style>
+        /* ─── Reset ─────────────────────────────────────────────── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { height: 100%; overflow: hidden; }
+
+        /* ─── Design Tokens ─────────────────────────────────────── */
+        :root {
+            --ed-base    : #1e1e2e;
+            --ed-surface : #181825;
+            --ed-border  : #313244;
+            --ed-text    : #cdd6f4;
+            --ed-muted   : #6c7086;
+            --ed-dim     : #45475a;
+            --ed-caret   : #89b4fa;
+
+            --out-base   : #f4f5fb;
+            --out-surface: #ffffff;
+            --out-border : #d0d4e8;
+            --out-text   : #1a1b2e;
+            --out-muted  : #6870a8;
+
+            --accent     : #5c7cfa;
+            --accent-dk  : #4263eb;
+
+            --ok         : #2f9e44;
+            --warn-bg    : #fffbe6;
+            --warn-border: #ffe066;
+            --warn-text  : #664d00;
+            --err-bg     : #fff5f5;
+            --err-border : #ffc9c9;
+            --err-text   : #c92a2a;
+
+            --th-bg      : #5c7cfa;
+            --row-even   : #eef0ff;
+            --row-hover  : #dde3ff;
+
+            --v-null     : #868e96;
+            --v-bool     : #7048e8;
+            --v-num      : #1971c2;
+            --v-str      : #2f9e44;
+            --v-obj-bg   : #ede9f7;
+            --v-obj-text : #5a3fa0;
+        }
+
+        /* ─── Body ──────────────────────────────────────────────── */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI',
+                         Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-size: 14px;
+            display: flex;
+            flex-direction: column;
+            background: var(--ed-base);
+            color: var(--ed-text);
+        }
+
+        /* ─── App Header ────────────────────────────────────────── */
+        .app-header {
+            height: 50px;
+            background: #11111b;
+            border-bottom: 1px solid var(--ed-border);
+            padding: 0 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+            user-select: none;
+            z-index: 10;
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 700;
+            font-size: 0.95rem;
+            letter-spacing: 0.3px;
+        }
+        .header-icon { font-size: 1.15rem; }
+        .badge {
+            font-size: 0.6rem;
+            font-weight: 800;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            padding: 2px 8px;
+            border-radius: 20px;
+            background: var(--accent);
+            color: #fff;
+        }
+        .badge.sec {
+            background: transparent;
+            border: 1px solid #2f9e44;
+            color: #69db7c;
+        }
+        .header-right {
+            display: flex;
+            gap: 8px;
+            font-size: 0.68rem;
+            color: var(--ed-muted);
+            letter-spacing: 0.2px;
+        }
+        .header-right span { opacity: 0.7; }
+
+        /* ─── Workspace ─────────────────────────────────────────── */
+        .workspace {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+            min-height: 0;
+        }
+
+        /* ─── Shared Panel ──────────────────────────────────────── */
+        .panel {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            min-width: 0;
+            overflow: hidden;
+        }
+        .panel-bar {
+            height: 42px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 14px;
+            flex-shrink: 0;
+            font-size: 0.7rem;
+            font-weight: 800;
+            letter-spacing: 0.9px;
+            text-transform: uppercase;
+        }
+        .bar-actions { display: flex; gap: 6px; }
+
+        /* ─── Buttons ───────────────────────────────────────────── */
+        .btn {
+            padding: 4px 13px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+            font-family: inherit;
+            outline: none;
+            transition: filter .15s ease, transform .1s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .btn:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+        .btn:hover  { filter: brightness(1.14); }
+        .btn:active { transform: scale(0.95); }
+
+        .btn-convert { background: var(--accent);  color: #fff; }
+        .btn-format  { background: #1c7ed6;         color: #fff; }
+        .btn-clear   { background: #e03131;          color: #fff; }
+        .btn-export  { background: var(--ed-dim);    color: var(--ed-text); }
+
+        /* ─── Left Panel ────────────────────────────────────────── */
+        .editor-panel {
+            flex: 0 0 50%;
+            background: var(--ed-surface);
+        }
+        .editor-panel .panel-bar {
+            background: #11111b;
+            color: var(--ed-muted);
+            border-bottom: 1px solid var(--ed-border);
+        }
+
+        #jsonInput {
+            flex: 1;
+            width: 100%;
+            min-height: 0;
+            border: none;
+            outline: none;
+            resize: none;
+            background: var(--ed-surface);
+            color: var(--ed-text);
+            padding: 14px 16px;
+            font-family: 'Cascadia Code', 'Fira Code', 'Consolas',
+                         'Monaco', 'Lucida Console', monospace;
+            font-size: 0.83rem;
+            line-height: 1.7;
+            tab-size: 2;
+            caret-color: var(--ed-caret);
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            overflow: auto;
+        }
+        #jsonInput::placeholder { color: var(--ed-muted); font-style: italic; }
+        #jsonInput::-webkit-scrollbar       { width: 6px; }
+        #jsonInput::-webkit-scrollbar-track { background: transparent; }
+        #jsonInput::-webkit-scrollbar-thumb { background: var(--ed-dim); border-radius: 3px; }
+
+        /* Status bar */
+        .status-bar {
+            height: 30px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 0 14px;
+            background: #11111b;
+            border-top: 1px solid var(--ed-border);
+            flex-shrink: 0;
+            overflow: hidden;
+        }
+        .status-dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: var(--ed-muted);
+            flex-shrink: 0;
+            transition: background .25s;
+        }
+        .status-dot.ok    { background: var(--ok); }
+        .status-dot.error { background: #e03131; }
+        .status-label {
+            font-size: 0.7rem;
+            font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+            color: var(--ed-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .status-label.ok    { color: #a6e3a1; }
+        .status-label.error { color: #f38ba8; }
+
+        /* ─── Resize Handle ─────────────────────────────────────── */
+        .resize-handle {
+            flex: 0 0 5px;
+            background: var(--ed-border);
+            cursor: col-resize;
+            position: relative;
+            z-index: 5;
+            transition: background .2s;
+        }
+        .resize-handle::after {
+            content: '';
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 3px; height: 40px;
+            background: var(--ed-dim);
+            border-radius: 2px;
+            transition: background .2s;
+        }
+        .resize-handle:hover,
+        .resize-handle.dragging { background: var(--accent); }
+        .resize-handle:hover::after,
+        .resize-handle.dragging::after { background: rgba(255,255,255,.5); }
+
+        /* ─── Right Panel ───────────────────────────────────────── */
+        .output-panel {
+            flex: 1;
+            background: var(--out-base);
+            min-width: 0;
+        }
+        .output-panel .panel-bar {
+            background: #e8eaff;
+            color: var(--out-muted);
+            border-bottom: 1px solid var(--out-border);
+        }
+        .output-panel .btn-export {
+            background: #d0d4f0;
+            color: var(--out-text);
+        }
+        .output-panel .btn-export:hover { filter: brightness(.94); }
+
+        /* ─── Breadcrumb Navigation Bar ─────────────────────────── */
+        /*
+         * Shown only when the user has drilled into nested data.
+         * All text content is set via textContent — XSS-safe.
+         */
+        .breadcrumb-bar {
+            display: none;           /* JS toggles .visible */
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 2px 4px;
+            padding: 0 14px;
+            min-height: 36px;
+            background: #dde3ff;
+            border-bottom: 2px solid #b3bcf5;
+            flex-shrink: 0;
+            font-size: .72rem;
+        }
+        .breadcrumb-bar.visible { display: flex; }
+
+        /* "⌂ Root" home button — filled accent */
+        .crumb-home {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 11px;
+            border: none;
+            border-radius: 5px;
+            font-weight: 800;
+            font-size: .7rem;
+            font-family: inherit;
+            cursor: pointer;
+            background: var(--accent);
+            color: #fff;
+            transition: filter .15s;
+        }
+        .crumb-home:hover         { filter: brightness(1.14); }
+        .crumb-home:focus-visible { outline: 2px solid var(--accent-dk); outline-offset: 2px; }
+
+        /* Intermediate clickable crumbs */
+        .crumb-btn {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 10px;
+            border: 1px solid rgba(92,124,250,.4);
+            border-radius: 5px;
+            font-weight: 700;
+            font-size: .7rem;
+            font-family: inherit;
+            cursor: pointer;
+            background: rgba(255,255,255,.75);
+            color: var(--accent-dk);
+            transition: background .14s, border-color .14s;
+        }
+        .crumb-btn:hover         { background: rgba(92,124,250,.12); border-color: var(--accent); }
+        .crumb-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+        /* Separator › */
+        .crumb-sep {
+            color: #8899cc;
+            font-weight: 900;
+            font-size: .8rem;
+            padding: 0 1px;
+            user-select: none;
+        }
+
+        /* Current (last) level — non-interactive */
+        .crumb-current {
+            font-weight: 800;
+            color: var(--out-text);
+            font-size: .72rem;
+            background: rgba(255,255,255,.9);
+            padding: 3px 10px;
+            border-radius: 5px;
+            border: 1px solid var(--out-border);
+        }
+
+        /* ─── Nested-value expand button ────────────────────────── */
+        .v-obj-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            align-items: flex-start;
+        }
+
+        .btn-expand {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 9px;
+            border: 1px solid var(--accent);
+            border-radius: 4px;
+            background: transparent;
+            color: var(--accent);
+            font-size: .67rem;
+            font-weight: 800;
+            font-family: inherit;
+            cursor: pointer;
+            letter-spacing: .2px;
+            white-space: nowrap;
+            outline: none;
+            transition: background .14s, color .14s;
+        }
+        .btn-expand:hover         { background: var(--accent); color: #fff; }
+        .btn-expand:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .btn-expand:active        { transform: scale(.96); }
+
+        /* ─── Output Scroll ─────────────────────────────────────── */
+        .output-scroll {
+            flex: 1;
+            overflow: auto;
+            padding: 16px;
+            min-height: 0;
+        }
+        .output-scroll::-webkit-scrollbar       { width: 8px; height: 8px; }
+        .output-scroll::-webkit-scrollbar-track { background: #eef0fa; }
+        .output-scroll::-webkit-scrollbar-thumb { background: #b8bce0; border-radius: 4px; }
+
+        /* Footer info strip */
+        .output-footer {
+            height: 32px;
+            display: none;
+            align-items: center;
+            gap: 22px;
+            padding: 0 16px;
+            background: #e8eaff;
+            border-top: 1px solid var(--out-border);
+            font-size: 0.7rem;
+            color: var(--out-muted);
+            flex-shrink: 0;
+        }
+        .output-footer.visible { display: flex; }
+        .f-stat { display: flex; gap: 5px; align-items: center; }
+        .f-stat strong { color: var(--out-text); font-weight: 800; font-size: 0.72rem; }
+
+        /* ─── Placeholder ───────────────────────────────────────── */
+        .placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            gap: 10px;
+            color: var(--out-muted);
+            text-align: center;
+            padding: 24px;
+            user-select: none;
+        }
+        .ph-icon  { font-size: 3rem; opacity: .22; }
+        .ph-title { font-size: .9rem; font-weight: 700; color: #5060a0; }
+        .ph-sub   { font-size: .78rem; opacity: .65; line-height: 1.6; }
+        .ph-sub code {
+            background: var(--out-surface);
+            border: 1px solid var(--out-border);
+            border-radius: 3px;
+            padding: 0 4px;
+            font-size: .72rem;
+            font-family: monospace;
+            color: var(--out-text);
+        }
+
+        /* ─── JSON Table ────────────────────────────────────────── */
+        .json-table {
+            border-collapse: separate;
+            border-spacing: 0;
+            width: 100%;
+            font-size: .8rem;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 12px rgba(70,90,200,.1);
+        }
+        .json-table thead th {
+            background: var(--th-bg);
+            color: #fff;
+            padding: 9px 13px;
+            text-align: left;
+            font-weight: 700;
+            white-space: nowrap;
+            border-right: 1px solid rgba(255,255,255,.12);
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+        .json-table thead th:last-child { border-right: none; }
+        .json-table tbody tr { transition: background .1s; }
+        .json-table tbody tr:nth-child(odd)  { background: var(--out-surface); }
+        .json-table tbody tr:nth-child(even) { background: var(--row-even); }
+        .json-table tbody tr:hover           { background: var(--row-hover); }
+        .json-table td {
+            padding: 7px 13px;
+            border-bottom: 1px solid var(--out-border);
+            border-right:  1px solid var(--out-border);
+            vertical-align: middle;
+            max-width: 300px;
+            word-break: break-word;
+            line-height: 1.4;
+        }
+        .json-table td:last-child { border-right: none; }
+
+        /* Row-number column */
+        .col-idx {
+            color: var(--out-muted) !important;
+            font-size: .7rem !important;
+            text-align: center !important;
+            font-weight: 700 !important;
+            background: #eef0ff !important;
+            min-width: 42px;
+            user-select: none;
+        }
+
+        /* Typed value spans */
+        .v-null  { color: var(--v-null);  font-style: italic; }
+        .v-bool  { color: var(--v-bool);  font-weight: 700; }
+        .v-num   { color: var(--v-num);   font-variant-numeric: tabular-nums; }
+        .v-str   { color: var(--v-str); }
+        .v-obj   {
+            display: block;
+            font-family: 'Cascadia Code','Fira Code','Consolas',monospace;
+            font-size: .72rem;
+            background: var(--v-obj-bg);
+            color: var(--v-obj-text);
+            padding: 3px 6px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            max-height: 72px;
+            overflow-y: auto;
+        }
+
+        /* ─── Alerts ────────────────────────────────────────────── */
+        .alert {
+            border-radius: 8px;
+            padding: 14px 16px;
+            font-size: .82rem;
+            line-height: 1.6;
+        }
+        .alert-error {
+            background: var(--err-bg);
+            border: 1px solid var(--err-border);
+            color: var(--err-text);
+            font-family: 'Cascadia Code','Fira Code','Consolas',monospace;
+            white-space: pre-wrap;
+        }
+        .alert-error::before { content: '⚠  Parse Error\A'; font-weight: 800; white-space: pre; }
+        .alert-info  { background: #eff3ff; border: 1px solid #bac8ff; color: #364fc7; }
+        .alert-warn  {
+            margin-top: 10px;
+            background: var(--warn-bg);
+            border: 1px solid var(--warn-border);
+            color: var(--warn-text);
+            font-size: .76rem;
+        }
+
+        /* ─── Toast ─────────────────────────────────────────────── */
+        .toast {
+            position: fixed;
+            bottom: 22px; right: 22px;
+            padding: 9px 18px;
+            border-radius: 6px;
+            font-size: .8rem; font-weight: 700;
+            color: #fff;
+            pointer-events: none;
+            z-index: 9999;
+            box-shadow: 0 4px 18px rgba(0,0,0,.22);
+            animation: toastIn .18s ease, toastOut .3s 1.7s ease forwards;
+        }
+        .toast.ok   { background: var(--ok); }
+        .toast.fail { background: #e03131;    }
+        @keyframes toastIn  { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes toastOut { from { opacity:1; } to { opacity:0; } }
+
+        /* ─── Responsive ────────────────────────────────────────── */
+        @media (max-width: 680px) {
+            .workspace     { flex-direction: column; }
+            .editor-panel  { flex: 0 0 50%; }
+            .resize-handle { display: none; }
+            .output-panel  { flex: 1; }
+            .header-right  { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════
+     APP HEADER
+════════════════════════════════════════ -->
+<header class="app-header" role="banner">
+    <div class="header-left">
+        <span class="header-icon" aria-hidden="true">&#x7B;&#x7D;</span>
+        JSON → Table Converter
+        <span class="badge">Offline</span>
+        <span class="badge sec">Secure</span>
+    </div>
+    <div class="header-right" aria-label="Security attestations">
+        <span>No External Resources</span>
+        <span aria-hidden="true"> · </span>
+        <span>XSS Protected</span>
+        <span aria-hidden="true"> · </span>
+        <span>OWASP Compliant</span>
+    </div>
+</header>
+
+<!-- ════════════════════════════════════════
+     WORKSPACE
+════════════════════════════════════════ -->
+<main class="workspace" id="workspace" role="main">
+
+    <!-- ── LEFT: JSON Editor ───────────────────────────────── -->
+    <section class="panel editor-panel" id="editorPanel"
+             aria-label="JSON input panel">
+
+        <div class="panel-bar" role="toolbar" aria-label="Editor toolbar">
+            <span>&#x1F4C4;&nbsp; JSON Input</span>
+            <div class="bar-actions">
+                <button class="btn btn-format"  id="btnFormat"  type="button" title="Pretty-print JSON (Ctrl+Shift+F)">&#x2728; Format</button>
+                <button class="btn btn-convert" id="btnConvert" type="button" title="Convert to table (Ctrl+Enter)">Convert &#x2192;</button>
+                <button class="btn btn-clear"   id="btnClear"   type="button" title="Clear all">&#x2715; Clear</button>
+            </div>
+        </div>
+
+        <textarea
+            id="jsonInput"
+            aria-label="JSON input area"
+            placeholder="Paste your JSON here…&#10;&#10;Supported shapes:&#10;  • Array of objects  →  full table&#10;  • Single object     →  key / value table&#10;  • Array of values   →  index / value table&#10;&#10;Nested objects/arrays show an Expand button.&#10;&#10;Keyboard shortcuts:&#10;  Ctrl + Enter      → Convert&#10;  Ctrl + Shift + F  → Format / Pretty-print&#10;  Tab               → Insert 2 spaces"
+            spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"
+        ></textarea>
+
+        <div class="status-bar" role="status" aria-live="polite">
+            <div class="status-dot"    id="statusDot"   aria-hidden="true"></div>
+            <span class="status-label" id="statusLabel">Ready — paste JSON and press Convert</span>
+        </div>
+
+    </section>
+
+    <!-- ── RESIZE HANDLE ───────────────────────────────────── -->
+    <div class="resize-handle" id="resizeHandle"
+         role="separator" aria-orientation="vertical"
+         aria-label="Resize panels (drag or use arrow keys)" tabindex="0"></div>
+
+    <!-- ── RIGHT: Table Output ─────────────────────────────── -->
+    <section class="panel output-panel" id="outputPanel"
+             aria-label="Table output panel">
+
+        <div class="panel-bar" role="toolbar" aria-label="Output toolbar">
+            <span>&#x1F4CA;&nbsp; Table Output</span>
+            <div class="bar-actions">
+                <button class="btn btn-export" id="btnCopyCsv"  type="button" title="Copy table as CSV">&#x1F4CB; CSV</button>
+                <button class="btn btn-export" id="btnCopyHtml" type="button" title="Copy table as standalone HTML">&#x1F4CB; HTML</button>
+            </div>
+        </div>
+
+        <!--
+            BREADCRUMB NAV
+            Shown only after the first nested expansion.
+            Built entirely with textContent — no innerHTML with user data.
+        -->
+        <nav class="breadcrumb-bar" id="breadcrumbBar"
+             role="navigation"
+             aria-label="Expansion path navigation">
+        </nav>
+
+        <div class="output-scroll" id="outputScroll"
+             aria-live="polite" aria-label="Table output area">
+            <div class="placeholder" id="placeholder">
+                <div class="ph-icon" aria-hidden="true">&#x1F4CB;</div>
+                <p class="ph-title">No data yet</p>
+                <p class="ph-sub">
+                    Paste JSON on the left, then click <strong>Convert</strong><br>
+                    or press <code>Ctrl</code> + <code>Enter</code>.<br><br>
+                    Nested objects &amp; arrays will show an<br>
+                    <strong>&#x2295; Expand</strong> button inside their cells.
+                </p>
+            </div>
+        </div>
+
+        <div class="output-footer" id="outputFooter" aria-label="Table statistics">
+            <div class="f-stat">Rows    <strong id="infoRows">0</strong></div>
+            <div class="f-stat">Columns <strong id="infoCols">0</strong></div>
+            <div class="f-stat">Source type <strong id="infoType">—</strong></div>
+            <div class="f-stat" id="infoDepthWrap" style="display:none">
+                Depth <strong id="infoDepth">0</strong>
+            </div>
+        </div>
+
+    </section>
+
+</main>
+
+<!-- ════════════════════════════════════════
+     APPLICATION SCRIPT
+
+     Security notes
+     ══════════════
+     • 'use strict' throughout — no implicit globals
+     • All user-supplied values written via textContent only
+     • No eval(), no Function(), no dynamic code execution
+     • No network calls of any kind
+     • JSON parsed exclusively via JSON.parse()
+     • Closures used for all event listeners inside loops
+     • Navigation stack stores raw parsed values (already validated)
+════════════════════════════════════════ -->
+<script>
+(function () {
+    'use strict';
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       1. SECURITY LIMITS
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+    var LIMIT = Object.freeze({
+        INPUT_BYTES    : 5 * 1024 * 1024,   // 5 MB
+        MAX_ROWS       : 10000,
+        MAX_COLS       : 200,
+        MAX_DEPTH      : 20,
+        MAX_CELL_CHARS : 500,
+        MAX_DEPTH_NODES: 250000,
+    });
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       2. DOM REFERENCES
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+    var ui = Object.freeze({
+        jsonInput     : document.getElementById('jsonInput'),
+        btnConvert    : document.getElementById('btnConvert'),
+        btnFormat     : document.getElementById('btnFormat'),
+        btnClear      : document.getElementById('btnClear'),
+        btnCopyCsv    : document.getElementById('btnCopyCsv'),
+        btnCopyHtml   : document.getElementById('btnCopyHtml'),
+        outputScroll  : document.getElementById('outputScroll'),
+        placeholder   : document.getElementById('placeholder'),
+        statusDot     : document.getElementById('statusDot'),
+        statusLabel   : document.getElementById('statusLabel'),
+        outputFooter  : document.getElementById('outputFooter'),
+        infoRows      : document.getElementById('infoRows'),
+        infoCols      : document.getElementById('infoCols'),
+        infoType      : document.getElementById('infoType'),
+        infoDepthWrap : document.getElementById('infoDepthWrap'),
+        infoDepth     : document.getElementById('infoDepth'),
+        resizeHandle  : document.getElementById('resizeHandle'),
+        editorPanel   : document.getElementById('editorPanel'),
+        workspace     : document.getElementById('workspace'),
+        breadcrumbBar : document.getElementById('breadcrumbBar'),
+    });
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       3. MUTABLE STATE
+       ─────────────────────────────────────────────────────────
+       navStack  — array of { data } frames pushed when the user
+                   expands into a nested value.  Each frame holds
+                   the data that was being displayed at that level.
+
+       navLabels — parallel array of string labels used to build
+                   the breadcrumb:
+                     navLabels[0] = 'Root'  (always)
+                     navLabels[n] = label of the nth expansion
+                   length === navStack.length + 1  (when expanded)
+
+       Invariant: navStack.length === 0  ↔  navLabels.length === 0
+                  (both reset together by doConvert / doClear)
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+    var state = {
+        lastParsed : null,
+        exportMeta : null,
+        navStack   : [],
+        navLabels  : [],
+    };
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       4. UTILITIES
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+    /** toSafeString — used ONLY for preview snippets in cells.
+     *  Output always goes to textContent, never innerHTML. */
+    function toSafeString(val) {
+        if (val === null)      return 'null';
+        if (val === undefined) return '';
+        if (typeof val === 'object') {
+            try {
+                var s = JSON.stringify(val);
+                return s.length > LIMIT.MAX_CELL_CHARS
+                    ? s.slice(0, LIMIT.MAX_CELL_CHARS) + '\u2026'
+                    : s;
+            } catch (_) { return '[unserializable]'; }
+        }
+        var str = String(val);
+        return str.length > LIMIT.MAX_CELL_CHARS
+            ? str.slice(0, LIMIT.MAX_CELL_CHARS) + '\u2026'
+            : str;
+    }
+
+    /** checkDepth — iterative depth validator, prevents stack overflow. */
+    function checkDepth(root) {
+        var stack     = [{ node: root, depth: 0 }];
+        var nodeCount = 0;
+        while (stack.length) {
+            var frame = stack.pop();
+            nodeCount++;
+            if (nodeCount > LIMIT.MAX_DEPTH_NODES) break;
+            if (frame.depth > LIMIT.MAX_DEPTH) {
+                throw new Error(
+                    'JSON nesting depth exceeds the allowed maximum of '
+                    + LIMIT.MAX_DEPTH + ' levels.\n'
+                    + 'This limit exists to prevent browser memory issues.'
+                );
+            }
+            if (frame.node !== null && typeof frame.node === 'object') {
+                var keys = Object.keys(frame.node);
+                for (var i = 0; i < keys.length; i++) {
+                    stack.push({ node: frame.node[keys[i]], depth: frame.depth + 1 });
+                }
+            }
+        }
+    }
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       5. STATUS BAR
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+    function setStatus(msg, type) {
+        ui.statusLabel.textContent = msg;
+        ui.statusLabel.className   = 'status-label' + (type ? ' ' + type : '');
+        ui.statusDot.className     = 'status-dot'   + (type ? ' ' + type : '');
+    }
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       6. LIVE VALIDATION  (debounced 300 ms)
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+    var liveValidateTimer = null;
+    function liveValidate() {
+        clearTimeout(liveValidateTimer);
+        liveValidateTimer = setTimeout(function () {
+            var raw = ui.jsonInput.value;
+            if (!raw.trim()) { setStatus('Ready \u2014 paste JSON and press Convert', ''); return; }
+            if (raw.length > LIMIT.INPUT_BYTES) { setStatus('Input exceeds 5\u202fMB limit.', 'error'); return; }
+            try { JSON.parse(raw); setStatus('Valid JSON \u2713', 'ok'); }
+            catch (e) { setStatus(e.message, 'error'); }
+        }, 300);
+    }
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       7. BREADCRUMB & NAVIGATION
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+    /**
+     * updateBreadcrumb
+     * Rebuilds the breadcrumb bar from state.navStack / state.navLabels.
+     *
+     * navLabels layout (when depth > 0):
+     *   [0] = 'Root'          → maps to navStack[0].data
+     *   [1] = first expansion → maps to navStack[1].data
+     *   …
+     *   [last] = current view → NOT in navStack (is state.lastParsed)
+     *
+     * Items except the last are rendered as clickable buttons.
+     * The last item is rendered as a non-interactive current indicator.
+     * ALL labels are set via textContent — XSS-safe.
+     */
+    function updateBreadcrumb() {
+        var nav = ui.breadcrumbBar;
+        while (nav.firstChild) nav.removeChild(nav.firstChild);
+
+        if (state.navStack.length === 0) {
+            nav.className = 'breadcrumb-bar';   // hide
+            ui.infoDepthWrap.style.display = 'none';
+            return;
+        }
+
+        nav.className = 'breadcrumb-bar visible';
+        ui.infoDepthWrap.style.display = 'flex';
+        ui.infoDepth.textContent = String(state.navStack.length);
+
+        state.navLabels.forEach(function (label, i) {
+            // Separator between items
+            if (i > 0) {
+                var sep = document.createElement('span');
+                sep.className = 'crumb-sep';
+                sep.setAttribute('aria-hidden', 'true');
+                sep.textContent = '\u203a';          // ›
+                nav.appendChild(sep);
+            }
+
+            var isLast = (i === state.navLabels.length - 1);
+
+            if (isLast) {
+                // Current, non-interactive level
+                var curr = document.createElement('span');
+                curr.className = 'crumb-current';
+                curr.setAttribute('aria-current', 'page');
+                curr.textContent = label;
+                nav.appendChild(curr);
+            } else {
+                var btn = document.createElement('button');
+                btn.type      = 'button';
+                btn.className = (i === 0) ? 'crumb-home' : 'crumb-btn';
+                // '\u2302' = ⌂ (house icon for Root)
+                btn.textContent = (i === 0) ? '\u2302 ' + label : label;
+                btn.title = 'Go back to: ' + label;
+                // Closure to capture the correct index
+                (function (idx) {
+                    btn.addEventListener('click', function () { doNavTo(idx); });
+                }(i));
+                nav.appendChild(btn);
+            }
+        });
+    }
+
+    /**
+     * doExpand
+     * Drills into a nested value, pushing the current view onto the stack.
+     *
+     * @param {*}      value - the nested JSON value to display
+     * @param {string} label - breadcrumb label for the new level
+     *
+     * Security: value is already-parsed, already-depth-validated JSON data.
+     * label is passed through textContent — never set as HTML.
+     */
+    function doExpand(value, label) {
+        // Seed 'Root' label on the very first expansion
+        if (state.navStack.length === 0) {
+            state.navLabels = ['Root'];
+        }
+        // Save current view
+        state.navStack.push({ data: state.lastParsed });
+        // Add label for the new level
+        state.navLabels.push(String(label));
+        // Switch to the expanded value
+        state.lastParsed = value;
+
+        renderOutput(value);
+        updateBreadcrumb();
+        ui.outputScroll.scrollTop = 0;
+    }
+
+    /**
+     * doNavTo
+     * Navigates back to a previous breadcrumb level.
+     *
+     * @param {number} labelIndex - index in navLabels to jump back to.
+     *                              navStack[labelIndex].data is the target.
+     */
+    function doNavTo(labelIndex) {
+        var entry = state.navStack[labelIndex];
+        state.lastParsed = entry.data;
+
+        if (labelIndex === 0) {
+            // All the way back to root — clear nav entirely
+            state.navStack  = [];
+            state.navLabels = [];
+        } else {
+            state.navStack  = state.navStack.slice(0, labelIndex);
+            state.navLabels = state.navLabels.slice(0, labelIndex + 1);
+        }
+
+        renderOutput(entry.data);
+        updateBreadcrumb();
+        ui.outputScroll.scrollTop = 0;
+    }
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       8. DOM BUILDERS  (all user text via textContent)
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+    function makeTh(text) {
+        var th = document.createElement('th');
+        th.scope = 'col';
+        th.textContent = text;
+        return th;
+    }
+
+    function makeIndexTd(n) {
+        var td = document.createElement('td');
+        td.className   = 'col-idx';
+        td.textContent = String(n);
+        return td;
+    }
+
+    /**
+     * makeValueTd
+     * Creates a <td> containing a correctly typed, XSS-safe representation
+     * of value.  If value is a non-empty object or array, an Expand button
+     * is also appended; clicking it calls doExpand(value, keyLabel).
+     *
+     * @param {*}      value    - JSON value to display
+     * @param {string} keyLabel - breadcrumb label if this cell is expanded
+     *
+     * SECURITY: every string is written via .textContent — never innerHTML.
+     */
+    function makeValueTd(value, keyLabel) {
+        var lbl = (keyLabel != null) ? String(keyLabel) : 'value';
+        var td  = document.createElement('td');
+        var span, display, isArray, count, isEmpty, typeStr,
+            wrapper, preview, expandBtn;
+
+        if (value === null) {
+            span           = document.createElement('span');
+            span.className = 'v-null';
+            span.textContent = 'null';
+            td.appendChild(span);
+
+        } else if (value === undefined) {
+            span           = document.createElement('span');
+            span.className = 'v-null';
+            span.textContent = '\u2014';
+            td.appendChild(span);
+
+        } else if (typeof value === 'boolean') {
+            span           = document.createElement('span');
+            span.className = 'v-bool';
+            span.textContent = value ? 'true' : 'false';
+            td.appendChild(span);
+
+        } else if (typeof value === 'number') {
+            span           = document.createElement('span');
+            span.className = 'v-num';
+            span.textContent = String(value);
+            td.appendChild(span);
+
+        } else if (typeof value === 'string') {
+            span      = document.createElement('span');
+            span.className = 'v-str';
+            display   = value.length > LIMIT.MAX_CELL_CHARS
+                ? value.slice(0, LIMIT.MAX_CELL_CHARS) + '\u2026'
+                : value;
+            span.textContent = display;
+            if (value.length > LIMIT.MAX_CELL_CHARS) {
+                td.title = 'Truncated. Full length: ' + value.length + ' chars';
+            }
+            td.appendChild(span);
+
+        } else if (typeof value === 'object') {
+            isArray = Array.isArray(value);
+            count   = isArray ? value.length : Object.keys(value).length;
+            isEmpty = (count === 0);
+            typeStr = isArray ? 'Array' : 'Object';
+
+            // Wrapper holds the preview + optional expand button
+            wrapper           = document.createElement('div');
+            wrapper.className = 'v-obj-wrapper';
+
+            // JSON preview snippet (truncated, shown via textContent)
+            preview           = document.createElement('span');
+            preview.className = 'v-obj';
+            preview.textContent = toSafeString(value);
+            wrapper.appendChild(preview);
+
+            // Expand button — only for non-empty objects / arrays
+            if (!isEmpty) {
+                expandBtn           = document.createElement('button');
+                expandBtn.type      = 'button';
+                expandBtn.className = 'btn-expand';
+                // textContent: type, count, singular/plural — safe
+                expandBtn.textContent =
+                    '\u2295 Expand ' + typeStr
+                    + ' (' + count + '\u202f'
+                    + (isArray ? 'item' : 'key')
+                    + (count !== 1 ? 's' : '') + ')';
+                expandBtn.title =
+                    'Drill into this ' + typeStr.toLowerCase()
+                    + ' (' + count + ' '
+                    + (isArray ? 'item' : 'key')
+                    + (count !== 1 ? 's' : '') + ')';
+                // Closure captures the specific value & label for this cell
+                (function (v, l) {
+                    expandBtn.addEventListener('click', function () {
+                        doExpand(v, l);
+                    });
+                }(value, lbl));
+                wrapper.appendChild(expandBtn);
+            }
+
+            td.appendChild(wrapper);
+
+        } else {
+            // Catch-all for any exotic types (e.g. Symbols shouldn't appear
+            // in parsed JSON, but defensive fallback is harmless)
+            span = document.createElement('span');
+            span.textContent = String(value);
+            td.appendChild(span);
+        }
+
+        return td;
+    }
+
+    /** collectKeys — union of all keys across an array, capped at MAX_COLS. */
+    function collectKeys(arr) {
+        var seen = Object.create(null);
+        var keys = [];
+        for (var i = 0; i < arr.length && keys.length < LIMIT.MAX_COLS; i++) {
+            var item = arr[i];
+            if (item !== null && typeof item === 'object' && !Array.isArray(item)) {
+                var ks = Object.keys(item);
+                for (var j = 0; j < ks.length && keys.length < LIMIT.MAX_COLS; j++) {
+                    if (!seen[ks[j]]) { seen[ks[j]] = true; keys.push(ks[j]); }
+                }
+            }
+        }
+        return keys;
+    }
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       9. TABLE BUILDERS
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+    function makeTable() {
+        var t = document.createElement('table');
+        t.className = 'json-table';
+        t.setAttribute('role', 'grid');
+        return t;
+    }
+
+    /** Array of objects → multi-column table.
+     *  Each object-/array-valued cell gets an Expand button
+     *  labelled with its column key. */
+    function buildArrayOfObjects(data) {
+        var headers = collectKeys(data);
+        var rows    = data.slice(0, LIMIT.MAX_ROWS);
+
+        if (headers.length === 0) { return buildPrimitiveArray(rows); }
+
+        var table = makeTable();
+        var thead = document.createElement('thead');
+        var hRow  = document.createElement('tr');
+        var idxTh = makeTh('#');
+        idxTh.style.width = '44px';
+        hRow.appendChild(idxTh);
+        headers.forEach(function (k) { hRow.appendChild(makeTh(k)); });
+        thead.appendChild(hRow);
+        table.appendChild(thead);
+
+        var tbody = document.createElement('tbody');
+        rows.forEach(function (item, i) {
+            var tr = document.createElement('tr');
+            tr.appendChild(makeIndexTd(i + 1));
+
+            if (item !== null && typeof item === 'object' && !Array.isArray(item)) {
+                // Pass column key as the breadcrumb label for each cell
+                headers.forEach(function (k) {
+                    tr.appendChild(makeValueTd(item[k], k));
+                });
+            } else {
+                // Mixed-type row — span all data columns
+                var td = makeValueTd(item, 'row\u202f' + (i + 1));
+                td.colSpan = headers.length;
+                tr.appendChild(td);
+            }
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+
+        state.exportMeta = { type: 'array-objects', headers: ['#'].concat(headers), rows: rows };
+        return table;
+    }
+
+    /** Single object → Key / Value table.
+     *  Object-/array-valued cells get an Expand button labelled with the key. */
+    function buildObject(obj) {
+        var keys  = Object.keys(obj);
+        var table = makeTable();
+
+        var thead = document.createElement('thead');
+        var hRow  = document.createElement('tr');
+        hRow.appendChild(makeTh('Key'));
+        hRow.appendChild(makeTh('Value'));
+        thead.appendChild(hRow);
+        table.appendChild(thead);
+
+        var tbody = document.createElement('tbody');
+        keys.slice(0, LIMIT.MAX_ROWS).forEach(function (k) {
+            var tr     = document.createElement('tr');
+            var keyTd  = document.createElement('td');
+            var keySpan = document.createElement('span');
+            keySpan.className   = 'v-str';
+            keySpan.textContent = k;
+            keyTd.appendChild(keySpan);
+            tr.appendChild(keyTd);
+            // Pass the key as the breadcrumb label for potential expansion
+            tr.appendChild(makeValueTd(obj[k], k));
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+
+        state.exportMeta = {
+            type: 'object',
+            headers: ['Key', 'Value'],
+            rows: keys.map(function (k) { return { Key: k, Value: obj[k] }; }),
+        };
+        return table;
+    }
+
+    /** Array of primitives (or nested arrays) → Index / Value table.
+     *  Nested-array / object items still get Expand buttons. */
+    function buildPrimitiveArray(data) {
+        var rows  = data.slice(0, LIMIT.MAX_ROWS);
+        var table = makeTable();
+
+        var thead = document.createElement('thead');
+        var hRow  = document.createElement('tr');
+        hRow.appendChild(makeTh('#'));
+        hRow.appendChild(makeTh('Value'));
+        thead.appendChild(hRow);
+        table.appendChild(thead);
+
+        var tbody = document.createElement('tbody');
+        rows.forEach(function (item, i) {
+            var tr = document.createElement('tr');
+            tr.appendChild(makeIndexTd(i + 1));
+            // Pass index as the breadcrumb label for potential expansion
+            tr.appendChild(makeValueTd(item, '[' + (i + 1) + ']'));
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+
+        state.exportMeta = { type: 'primitive-array', headers: ['#', 'Value'], rows: rows };
+        return table;
+    }
+
+    /** dispatchBuild — route to the correct builder for a given value. */
+    function dispatchBuild(data) {
+        if (Array.isArray(data)) {
+            if (data.length === 0) return null;
+            var hasObjects = data.some(function (x) {
+                return x !== null && typeof x === 'object';
+            });
+            return hasObjects ? buildArrayOfObjects(data) : buildPrimitiveArray(data);
+        }
+        if (data !== null && typeof data === 'object') {
+            return buildObject(data);
+        }
+        // Primitive root (number, boolean, string, null at top level)
+        var div   = document.createElement('div');
+        div.className = 'alert alert-info';
+        var lbl   = document.createElement('strong');
+        lbl.textContent = 'Primitive (' + typeof data + '): ';
+        var val   = document.createElement('span');
+        val.textContent = String(data);
+        div.appendChild(lbl);
+        div.appendChild(val);
+        state.exportMeta = null;
+        return div;
+    }
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       10. OUTPUT RENDERING
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+    function clearOutput() {
+        while (ui.outputScroll.firstChild) {
+            ui.outputScroll.removeChild(ui.outputScroll.firstChild);
+        }
+    }
+
+    function renderOutput(data) {
+        clearOutput();
+        state.exportMeta = null;
+
+        if (Array.isArray(data) && data.length === 0) {
+            var emptyMsg       = document.createElement('div');
+            emptyMsg.className = 'alert alert-info';
+            emptyMsg.textContent = 'Empty array \u2014 no rows to display.';
+            ui.outputScroll.appendChild(emptyMsg);
+            setFooter(0, 0, 'Array (empty)');
+            return;
+        }
+
+        var element = dispatchBuild(data);
+        if (element) { ui.outputScroll.appendChild(element); }
+
+        // Truncation notice
+        if (Array.isArray(data) && data.length > LIMIT.MAX_ROWS) {
+            var notice       = document.createElement('div');
+            notice.className = 'alert alert-warn';
+            notice.textContent =
+                '\u26a0\ufe0f  Showing first '
+                + LIMIT.MAX_ROWS.toLocaleString()
+                + ' of '
+                + data.length.toLocaleString()
+                + ' rows. Export to CSV for the full dataset.';
+            ui.outputScroll.appendChild(notice);
+        }
+
+        // Column cap notice
+        if (!Array.isArray(data) || data.length > 0) {
+            var keys = collectKeys(Array.isArray(data) ? data : [data]);
+            if (keys.length >= LIMIT.MAX_COLS) {
+                var colNotice       = document.createElement('div');
+                colNotice.className = 'alert alert-warn';
+                colNotice.textContent =
+                    '\u26a0\ufe0f  Column display capped at '
+                    + LIMIT.MAX_COLS
+                    + '. Additional keys are omitted.';
+                ui.outputScroll.appendChild(colNotice);
+            }
+        }
+
+        // Footer stats
+        var rows = 0, cols = 0, type = '\u2014';
+        if (Array.isArray(data)) {
+            rows = Math.min(data.length, LIMIT.MAX_ROWS);
+            type = 'Array';
+            cols = collectKeys(data).length || 1;
+        } else if (data !== null && typeof data === 'object') {
+            rows = Math.min(Object.keys(data).length, LIMIT.MAX_ROWS);
+            cols = 2;
+            type = 'Object';
+        } else {
+            rows = 1; cols = 1;
+            type = typeof data;
+        }
+        setFooter(rows, cols, type);
+    }
+
+    function setFooter(rows, cols, type) {
+        ui.infoRows.textContent   = rows.toLocaleString();
+        ui.infoCols.textContent   = cols.toLocaleString();
+        ui.infoType.textContent   = type;
+        ui.outputFooter.className = 'output-footer visible';
+    }
+
+    function showParseError(msg) {
+        clearOutput();
+        var div       = document.createElement('div');
+        div.className = 'alert alert-error';
+        div.textContent = msg;
+        ui.outputScroll.appendChild(div);
+        ui.outputFooter.className = 'output-footer';
+    }
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       11. MAIN ACTIONS
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+    function doConvert() {
+        var raw = ui.jsonInput.value;
+        if (!raw.trim()) { setStatus('No input \u2014 paste JSON first.', 'error'); return; }
+        if (raw.length > LIMIT.INPUT_BYTES) {
+            setStatus('Input exceeds 5\u202fMB security limit.', 'error');
+            showParseError(
+                'Input size (' + (raw.length / 1048576).toFixed(1)
+                + '\u202fMB) exceeds the 5\u202fMB limit.\n'
+                + 'Please reduce the size of your JSON.'
+            );
+            return;
+        }
+
+        var parsed;
+        try { parsed = JSON.parse(raw); }
+        catch (e) { setStatus(e.message, 'error'); showParseError(e.message); return; }
+
+        try { checkDepth(parsed); }
+        catch (e) { setStatus(e.message, 'error'); showParseError(e.message); return; }
+
+        // Reset navigation — new conversion starts fresh
+        state.navStack  = [];
+        state.navLabels = [];
+        updateBreadcrumb();
+
+        state.lastParsed = parsed;
+        renderOutput(parsed);
+        setStatus(
+            'Converted \u2713  \u2014  '
+            + (Array.isArray(parsed)
+                ? parsed.length.toLocaleString() + ' item(s)'
+                : typeof parsed === 'object' && parsed !== null
+                    ? Object.keys(parsed).length.toLocaleString() + ' key(s)'
+                    : 'primitive'),
+            'ok'
+        );
+    }
+
+    function doFormat() {
+        var raw = ui.jsonInput.value.trim();
+        if (!raw) return;
+        try {
+            var p = JSON.parse(raw);
+            ui.jsonInput.value = JSON.stringify(p, null, 2);
+            setStatus('Formatted \u2713', 'ok');
+        } catch (e) {
+            setStatus('Cannot format: ' + e.message, 'error');
+        }
+    }
+
+    function doClear() {
+        ui.jsonInput.value        = '';
+        state.lastParsed          = null;
+        state.exportMeta          = null;
+        state.navStack            = [];
+        state.navLabels           = [];
+        updateBreadcrumb();
+        clearOutput();
+        ui.outputScroll.appendChild(ui.placeholder);
+        ui.outputFooter.className = 'output-footer';
+        setStatus('Ready \u2014 paste JSON and press Convert', '');
+    }
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       12. CSV GENERATION
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+    function csvEscape(val) {
+        var s = toSafeString(val);
+        if (s.indexOf(',')  !== -1 || s.indexOf('"') !== -1
+         || s.indexOf('\n') !== -1 || s.indexOf('\r') !== -1) {
+            return '"' + s.replace(/"/g, '""') + '"';
+        }
+        return s;
+    }
+
+    function generateCsv() {
+        var exp = state.exportMeta;
+        if (!exp) return null;
+        var lines = [exp.headers.map(csvEscape).join(',')];
+        if (exp.type === 'array-objects') {
+            var dh = exp.headers.slice(1);
+            exp.rows.forEach(function (row, i) {
+                var cells = [String(i + 1)];
+                if (row !== null && typeof row === 'object' && !Array.isArray(row)) {
+                    dh.forEach(function (k) { cells.push(csvEscape(row[k])); });
+                } else {
+                    cells.push(csvEscape(row));
+                }
+                lines.push(cells.join(','));
+            });
+        } else if (exp.type === 'object') {
+            exp.rows.forEach(function (r) {
+                lines.push([csvEscape(r.Key), csvEscape(r.Value)].join(','));
+            });
+        } else {
+            exp.rows.forEach(function (item, i) {
+                lines.push([String(i + 1), csvEscape(item)].join(','));
+            });
+        }
+        return lines.join('\r\n');
+    }
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       13. HTML EXPORT
+       Security note: clone.outerHTML is safe here because every
+       value was written via textContent, so the browser has already
+       HTML-encoded all special characters (< → &lt; etc.).
+       Expand buttons are stripped from the clone since they depend
+       on JS that the exported file will not contain.
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+    function generateHtml() {
+        var tbl = ui.outputScroll.querySelector('.json-table');
+        if (!tbl) return null;
+
+        var clone = tbl.cloneNode(true);
+
+        // Remove expand buttons — they are non-functional without the JS
+        var btns = clone.querySelectorAll('.btn-expand');
+        for (var i = 0; i < btns.length; i++) {
+            btns[i].parentNode.removeChild(btns[i]);
+        }
+
+        return '<!DOCTYPE html>\n<html lang="en">\n<head>\n'
+            + '<meta charset="UTF-8">\n'
+            + '<meta name="viewport" content="width=device-width,initial-scale=1">\n'
+            + '<title>Exported Table</title>\n'
+            + '<style>\n'
+            + 'body{font-family:sans-serif;padding:20px;background:#f4f5fb}'
+            + 'table{border-collapse:collapse;width:100%;font-size:13px;'
+            +       'border-radius:8px;overflow:hidden;'
+            +       'box-shadow:0 2px 12px rgba(70,90,200,.1)}'
+            + 'th{background:#5c7cfa;color:#fff;padding:9px 13px;'
+            +    'text-align:left;font-weight:700}'
+            + 'td{padding:7px 13px;border:1px solid #d0d4e8;vertical-align:middle}'
+            + 'tr:nth-child(even){background:#eef0ff}'
+            + 'tr:hover{background:#dde3ff}'
+            + '.v-null{color:#868e96;font-style:italic}'
+            + '.v-bool{color:#7048e8;font-weight:700}'
+            + '.v-num{color:#1971c2}'
+            + '.v-str{color:#2f9e44}'
+            + '.v-obj{display:block;font-family:monospace;font-size:.8em;'
+            +         'background:#ede9f7;color:#5a3fa0;padding:3px 6px;'
+            +         'border-radius:4px;white-space:pre-wrap}'
+            + '.v-obj-wrapper{display:block}'
+            + '\n</style>\n</head>\n<body>\n'
+            + clone.outerHTML
+            + '\n</body>\n</html>';
+    }
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       14. CLIPBOARD
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+    function copyText(text, label) {
+        if (!text) { showToast('Nothing to copy.', false); return; }
+        function onOk()   { showToast(label + ' copied to clipboard!', true);  }
+        function onFail() { showToast('Copy failed \u2014 please copy manually.', false); }
+
+        if (typeof navigator.clipboard !== 'undefined'
+                && typeof navigator.clipboard.writeText === 'function') {
+            navigator.clipboard.writeText(text).then(onOk, onFail);
+        } else {
+            try {
+                var ta           = document.createElement('textarea');
+                ta.value         = text;
+                ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;';
+                document.body.appendChild(ta);
+                ta.focus(); ta.select();
+                var ok = document.execCommand('copy');
+                document.body.removeChild(ta);
+                ok ? onOk() : onFail();
+            } catch (_) { onFail(); }
+        }
+    }
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       15. TOAST NOTIFICATIONS
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+    function showToast(msg, ok) {
+        document.querySelectorAll('.toast').forEach(function (t) { t.remove(); });
+        var t = document.createElement('div');
+        t.className = 'toast ' + (ok ? 'ok' : 'fail');
+        t.textContent = msg;
+        t.setAttribute('role', 'alert');
+        t.setAttribute('aria-live', 'assertive');
+        document.body.appendChild(t);
+        setTimeout(function () { t.remove(); }, 2100);
+    }
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       16. RESIZABLE PANELS
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+    (function () {
+        var dragging = false, startX = 0, startW = 0;
+
+        ui.resizeHandle.addEventListener('mousedown', function (e) {
+            dragging = true;
+            startX   = e.clientX;
+            startW   = ui.editorPanel.getBoundingClientRect().width;
+            ui.resizeHandle.classList.add('dragging');
+            document.body.style.cursor     = 'col-resize';
+            document.body.style.userSelect = 'none';
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', function (e) {
+            if (!dragging) return;
+            var totalW  = ui.workspace.getBoundingClientRect().width;
+            var handleW = ui.resizeHandle.offsetWidth;
+            var newW    = Math.min(Math.max(startW + (e.clientX - startX), 220), totalW - handleW - 220);
+            ui.editorPanel.style.flex = '0 0 ' + newW + 'px';
+        });
+
+        document.addEventListener('mouseup', function () {
+            if (!dragging) return;
+            dragging = false;
+            ui.resizeHandle.classList.remove('dragging');
+            document.body.style.cursor = document.body.style.userSelect = '';
+        });
+
+        ui.resizeHandle.addEventListener('keydown', function (e) {
+            var step    = e.shiftKey ? 60 : 20;
+            var cur     = ui.editorPanel.getBoundingClientRect().width;
+            var totalW  = ui.workspace.getBoundingClientRect().width;
+            var handleW = ui.resizeHandle.offsetWidth;
+            var newW    = cur;
+            if (e.key === 'ArrowLeft')  newW = Math.max(220, cur - step);
+            if (e.key === 'ArrowRight') newW = Math.min(totalW - handleW - 220, cur + step);
+            if (newW !== cur) { ui.editorPanel.style.flex = '0 0 ' + newW + 'px'; e.preventDefault(); }
+        });
+    }());
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       17. TEXTAREA KEYBOARD SHORTCUTS
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+    ui.jsonInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            var s = this.selectionStart, end = this.selectionEnd;
+            this.value = this.value.slice(0, s) + '  ' + this.value.slice(end);
+            this.selectionStart = this.selectionEnd = s + 2;
+            return;
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter')          { e.preventDefault(); doConvert(); return; }
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') { e.preventDefault(); doFormat();  }
+    });
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       18. WIRE UP EVENTS
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+    ui.btnConvert.addEventListener('click',  doConvert);
+    ui.btnFormat.addEventListener('click',   doFormat);
+    ui.btnClear.addEventListener('click',    doClear);
+    ui.jsonInput.addEventListener('input',   liveValidate);
+    ui.btnCopyCsv.addEventListener('click',  function () { copyText(generateCsv(),  'CSV');  });
+    ui.btnCopyHtml.addEventListener('click', function () { copyText(generateHtml(), 'HTML'); });
+
+}());
+</script>
+</body>
+</html>
