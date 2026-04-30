@@ -88,8 +88,8 @@ as they cannot be set via a meta tag:
 
 ## Usage
 
-1. Download `index.html`
-2. Open it in any modern browser — no server required
+1. Download `jsonViewer.html`
+2. Open it in any modern browser
 3. Paste your JSON into the left panel
 4. Click **Convert** or press `Ctrl + Enter`
 5. Use **⊕ Expand** buttons to drill into nested data
