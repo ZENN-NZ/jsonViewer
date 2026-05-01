@@ -1,1585 +1,2307 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!--
-    ╔══════════════════════════════════════════════════════════════╗
-    ║  SECURITY POLICY                                             ║
-    ║  • No external resources (offline-only, no CDN)             ║
-    ║  • All user data rendered via DOM textContent (XSS-safe)    ║
-    ║  • Input size-limited and depth-validated                   ║
-    ║  • CSP enforced via meta tag                                ║
-    ║                                                             ║
-    ║  When serving from a web server, ALSO add these headers:    ║
-    ║    X-Content-Type-Options: nosniff                          ║
-    ║    X-Frame-Options: DENY                                    ║
-    ║    Permissions-Policy: geolocation=(),camera=(),mic=()      ║
-    ║    Strict-Transport-Security: max-age=31536000              ║
-    ╚══════════════════════════════════════════════════════════════╝
-    -->
-    <meta http-equiv="Content-Security-Policy"
-          content="default-src 'none';
-                   style-src  'unsafe-inline';
-                   script-src 'unsafe-inline';
-                   form-action 'none';
-                   base-uri    'none';">
-    <meta name="referrer" content="no-referrer">
-    <title>JSON → Table Converter</title>
-    <style>
-        /* ─── Reset ─────────────────────────────────────────────── */
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        html, body { height: 100%; overflow: hidden; }
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<!--
+  SECURITY POLICY
+  • No external resources (offline-only, no CDN)
+  • All user data rendered via DOM textContent (XSS-safe)
+  • Input size-limited and depth-validated
+  • CSP enforced via meta tag
+  When serving from a web server, ALSO add these headers:
+    X-Content-Type-Options: nosniff
+    X-Frame-Options: DENY
+    Permissions-Policy: geolocation=(),camera=(),mic=()
+    Strict-Transport-Security: max-age=31536000
+-->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; form-action 'none'; base-uri 'none';">
+<meta name="referrer" content="no-referrer">
+<title>JSON + Table Converter</title>
+<style>
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
 
-        /* ─── Design Tokens ─────────────────────────────────────── */
-        :root {
-            --ed-base    : #1e1e2e;
-            --ed-surface : #181825;
-            --ed-border  : #313244;
-            --ed-text    : #cdd6f4;
-            --ed-muted   : #6c7086;
-            --ed-dim     : #45475a;
-            --ed-caret   : #89b4fa;
+/* ── Design Tokens ── */
+:root {
+  --ed-base:       #1e1e2e;
+  --ed-surface:    #181825;
+  --ed-border:     #313244;
+  --ed-text:       #cdd6f4;
+  --ed-muted:      #6c7086;
+  --ed-dim:        #45475a;
+  --ed-caret:      #89b4fa;
+  --out-base:      #1e1e2e;
+  --out-surface:   #181825;
+  --out-border:    #313244;
+  --out-text:      #cdd6f4;
+  --out-muted:     #a6adc8;
+  --accent:        #5c7cfa;
+  --accent-dk:     #4263eb;
+  --ok:            #2f9e44;
+  --warn-bg:       #2a2510;
+  --warn-border:   #665500;
+  --warn-text:     #ffe066;
+  --err-bg:        #2d1a1a;
+  --err-border:    #5c2020;
+  --err-text:      #f38ba8;
+  --th-bg:         #5c7cfa;
+  --row-even:      #252538;
+  --row-hover:     #2d2d4a;
+  --v-null:        #868e96;
+  --v-bool:        #c4b5fd;
+  --v-num:         #89b4fa;
+  --v-str:         #a6e3a1;
+  --v-object-bg:   #2d2b3d;
+  --v-object-text: #c4b5fd;
+}
 
-            --out-base   : #f4f5fb;
-            --out-surface: #ffffff;
-            --out-border : #d0d4e8;
-            --out-text   : #1a1b2e;
-            --out-muted  : #6870a8;
+/* ── Body ── */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI',
+               Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  background: var(--ed-base);
+  color: var(--ed-text);
+}
 
-            --accent     : #5c7cfa;
-            --accent-dk  : #4263eb;
+/* ── App Header ── */
+.app-header {
+  height: 50px;
+  background: #11111b;
+  border-bottom: 1px solid var(--ed-border);
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  user-select: none;
+  z-index: 10;
+}
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.3px;
+}
+.header-icon { font-size: 1.15rem; }
+.badge {
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: var(--accent);
+  color: #fff;
+}
+.badge.sec {
+  background: transparent;
+  border: 1px solid #2f9e44;
+  color: #69db7c;
+}
+.header-right {
+  display: flex;
+  gap: 8px;
+  font-size: 0.68rem;
+  color: var(--ed-muted);
+  letter-spacing: 0.2px;
+}
+.header-right span { opacity: 0.7; }
 
-            --ok         : #2f9e44;
-            --warn-bg    : #fffbe6;
-            --warn-border: #ffe066;
-            --warn-text  : #664d00;
-            --err-bg     : #fff5f5;
-            --err-border : #ffc9c9;
-            --err-text   : #c92a2a;
+/* ── Workspace ── */
+.workspace {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
 
-            --th-bg      : #5c7cfa;
-            --row-even   : #eef0ff;
-            --row-hover  : #dde3ff;
+/* ── Shared Panel ── */
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.panel-bar {
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+}
+.bar-actions { display: flex; gap: 6px; align-items: center; }
 
-            --v-null     : #868e96;
-            --v-bool     : #7048e8;
-            --v-num      : #1971c2;
-            --v-str      : #2f9e44;
-            --v-obj-bg   : #ede9f7;
-            --v-obj-text : #5a3fa0;
-        }
+/* ── Buttons ── */
+.btn {
+  padding: 4px 13px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  font-family: inherit;
+  outline: none;
+  transition: filter .15s ease, transform .1s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn:hover  { filter: brightness(1.14); }
+.btn:active { transform: scale(0.95); }
+.btn-convert { background: var(--accent); color: #fff; }
+.btn-format  { background: #1c7ed6;      color: #fff; }
+.btn-clear   { background: #e03131;      color: #fff; }
+.btn-export  { background: var(--ed-dim); color: var(--ed-text); }
+/* ── NEW: Stats button ── */
+.btn-stats   { background: #0c8599; color: #fff; }
 
-        /* ─── Body ──────────────────────────────────────────────── */
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI',
-                         Roboto, 'Helvetica Neue', Arial, sans-serif;
-            font-size: 14px;
-            display: flex;
-            flex-direction: column;
-            background: var(--ed-base);
-            color: var(--ed-text);
-        }
+/* ── NEW: View-mode toggle ── */
+.view-toggle {
+  display: flex;
+  gap: 2px;
+  background: rgba(0,0,0,.12);
+  border-radius: 6px;
+  padding: 2px;
+}
+.btn-view {
+  padding: 3px 11px;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: transparent;
+  color: var(--out-muted);
+  border: none;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  font-family: inherit;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+.btn-view.active             { background: var(--accent); color: #fff; }
+.btn-view:hover:not(.active) { background: rgba(92,124,250,.15); color: var(--accent-dk); }
+.btn-view:focus-visible      { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
 
-        /* ─── App Header ────────────────────────────────────────── */
-        .app-header {
-            height: 50px;
-            background: #11111b;
-            border-bottom: 1px solid var(--ed-border);
-            padding: 0 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-shrink: 0;
-            user-select: none;
-            z-index: 10;
-        }
-        .header-left {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-weight: 700;
-            font-size: 0.95rem;
-            letter-spacing: 0.3px;
-        }
-        .header-icon { font-size: 1.15rem; }
-        .badge {
-            font-size: 0.6rem;
-            font-weight: 800;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-            padding: 2px 8px;
-            border-radius: 20px;
-            background: var(--accent);
-            color: #fff;
-        }
-        .badge.sec {
-            background: transparent;
-            border: 1px solid #2f9e44;
-            color: #69db7c;
-        }
-        .header-right {
-            display: flex;
-            gap: 8px;
-            font-size: 0.68rem;
-            color: var(--ed-muted);
-            letter-spacing: 0.2px;
-        }
-        .header-right span { opacity: 0.7; }
+/* ── Left Panel ── */
+.editor-panel {
+  flex: 0 0 50%;
+  background: var(--ed-surface);
+}
+.editor-panel .panel-bar {
+  background: #11111b;
+  color: var(--ed-muted);
+  border-bottom: 1px solid var(--ed-border);
+}
+#jsonInput {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: none;
+  outline: none;
+  resize: none;
+  background: var(--ed-surface);
+  color: var(--ed-text);
+  padding: 14px 16px;
+  font-family: 'Cascadia Code','Fira Code','Consolas','Monaco','Lucida Console',monospace;
+  font-size: 0.83rem;
+  line-height: 1.7;
+  tab-size: 2;
+  caret-color: var(--ed-caret);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow: auto;
+}
+#jsonInput::placeholder { color: var(--ed-muted); font-style: italic; }
+#jsonInput::-webkit-scrollbar       { width: 6px; }
+#jsonInput::-webkit-scrollbar-track { background: transparent; }
+#jsonInput::-webkit-scrollbar-thumb { background: var(--ed-dim); border-radius: 3px; }
 
-        /* ─── Workspace ─────────────────────────────────────────── */
-        .workspace {
-            display: flex;
-            flex: 1;
-            overflow: hidden;
-            min-height: 0;
-        }
+/* ── Status Bar ── */
+.status-bar {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  background: #11111b;
+  border-top: 1px solid var(--ed-border);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.status-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--ed-muted);
+  flex-shrink: 0;
+  transition: background .25s;
+}
+.status-dot.ok    { background: var(--ok); }
+.status-dot.error { background: #e03131; }
+.status-label {
+  font-size: 0.7rem;
+  font-family: 'Cascadia Code','Fira Code','Consolas',monospace;
+  color: var(--ed-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.status-label.ok    { color: #a6e3a1; }
+.status-label.error { color: #f38ba8; }
 
-        /* ─── Shared Panel ──────────────────────────────────────── */
-        .panel {
-            display: flex;
-            flex-direction: column;
-            min-height: 0;
-            min-width: 0;
-            overflow: hidden;
-        }
-        .panel-bar {
-            height: 42px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 14px;
-            flex-shrink: 0;
-            font-size: 0.7rem;
-            font-weight: 800;
-            letter-spacing: 0.9px;
-            text-transform: uppercase;
-        }
-        .bar-actions { display: flex; gap: 6px; }
+/* ── Resize Handle ── */
+.resize-handle {
+  flex: 0 0 5px;
+  background: var(--ed-border);
+  cursor: col-resize;
+  position: relative;
+  z-index: 5;
+  transition: background .2s;
+}
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 3px; height: 40px;
+  background: var(--ed-dim);
+  border-radius: 2px;
+  transition: background .2s;
+}
+.resize-handle:hover,
+.resize-handle.dragging { background: var(--accent); }
+.resize-handle:hover::after,
+.resize-handle.dragging::after { background: rgba(255,255,255,.5); }
 
-        /* ─── Buttons ───────────────────────────────────────────── */
-        .btn {
-            padding: 4px 13px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 0.72rem;
-            font-weight: 700;
-            letter-spacing: 0.3px;
-            font-family: inherit;
-            outline: none;
-            transition: filter .15s ease, transform .1s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .btn:focus-visible {
-            outline: 2px solid var(--accent);
-            outline-offset: 2px;
-        }
-        .btn:hover  { filter: brightness(1.14); }
-        .btn:active { transform: scale(0.95); }
+/* ── Right Panel ── */
+.output-panel {
+  flex: 1;
+  background: var(--out-base);
+  min-width: 0;
+}
+.output-panel .panel-bar {
+  background: #11111b;
+  color: var(--out-muted);
+  border-bottom: 1px solid var(--out-border);
+}
+.output-panel .btn-export { background: var(--ed-dim); color: var(--ed-text); }
+.output-panel .btn-export:hover { filter: brightness(1.14); }
 
-        .btn-convert { background: var(--accent);  color: #fff; }
-        .btn-format  { background: #1c7ed6;         color: #fff; }
-        .btn-clear   { background: #e03131;          color: #fff; }
-        .btn-export  { background: var(--ed-dim);    color: var(--ed-text); }
+/* ── Breadcrumb Navigation Bar ── */
+.breadcrumb-bar {
+  display: none;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 4px;
+  padding: 0 14px;
+  min-height: 36px;
+  background: #252538;
+  border-bottom: 2px solid #313244;
+  flex-shrink: 0;
+  font-size: .72rem;
+}
+.breadcrumb-bar.visible { display: flex; }
+.crumb-home {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 11px;
+  border: none;
+  border-radius: 5px;
+  font-weight: 800;
+  font-size: .7rem;
+  font-family: inherit;
+  cursor: pointer;
+  background: var(--accent);
+  color: #fff;
+  transition: filter .15s;
+}
+.crumb-home:hover { filter: brightness(1.14); }
+.crumb-home:focus-visible { outline: 2px solid var(--accent-dk); outline-offset: 2px; }
+.crumb-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border: 1px solid rgba(92,124,250,.4);
+  border-radius: 5px;
+  font-weight: 700;
+  font-size: .7rem;
+  font-family: inherit;
+  cursor: pointer;
+  background: rgba(30,30,46,.75);
+  color: var(--accent);
+  transition: background .14s, border-color .14s;
+}
+.crumb-btn:hover { background: rgba(92,124,250,.12); border-color: var(--accent); }
+.crumb-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.crumb-sep {
+  color: #6c7086;
+  font-weight: 900;
+  font-size: .8rem;
+  padding: 0 1px;
+  user-select: none;
+}
+.crumb-current {
+  font-weight: 800;
+  color: var(--out-text);
+  font-size: .72rem;
+  background: rgba(30,30,46,.9);
+  padding: 3px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--out-border);
+}
 
-        /* ─── Left Panel ────────────────────────────────────────── */
-        .editor-panel {
-            flex: 0 0 50%;
-            background: var(--ed-surface);
-        }
-        .editor-panel .panel-bar {
-            background: #11111b;
-            color: var(--ed-muted);
-            border-bottom: 1px solid var(--ed-border);
-        }
+/* ── Table: nested-value expand button ── */
+.v-obj-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: flex-start;
+}
+.btn-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent);
+  font-size: .67rem;
+  font-weight: 800;
+  font-family: inherit;
+  cursor: pointer;
+  letter-spacing: .2px;
+  white-space: nowrap;
+  outline: none;
+  transition: background .14s, color .14s;
+}
+.btn-expand:hover { background: var(--accent); color: #fff; }
+.btn-expand:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn-expand:active { transform: scale(.96); }
 
-        #jsonInput {
-            flex: 1;
-            width: 100%;
-            min-height: 0;
-            border: none;
-            outline: none;
-            resize: none;
-            background: var(--ed-surface);
-            color: var(--ed-text);
-            padding: 14px 16px;
-            font-family: 'Cascadia Code', 'Fira Code', 'Consolas',
-                         'Monaco', 'Lucida Console', monospace;
-            font-size: 0.83rem;
-            line-height: 1.7;
-            tab-size: 2;
-            caret-color: var(--ed-caret);
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            overflow: auto;
-        }
-        #jsonInput::placeholder { color: var(--ed-muted); font-style: italic; }
-        #jsonInput::-webkit-scrollbar       { width: 6px; }
-        #jsonInput::-webkit-scrollbar-track { background: transparent; }
-        #jsonInput::-webkit-scrollbar-thumb { background: var(--ed-dim); border-radius: 3px; }
+/* ── Output Scroll ── */
+.output-scroll {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+  min-height: 0;
+}
+.output-scroll::-webkit-scrollbar       { width: 8px; height: 8px; }
+.output-scroll::-webkit-scrollbar-track { background: transparent; }
+.output-scroll::-webkit-scrollbar-thumb { background: var(--ed-dim); border-radius: 4px; }
 
-        /* Status bar */
-        .status-bar {
-            height: 30px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 0 14px;
-            background: #11111b;
-            border-top: 1px solid var(--ed-border);
-            flex-shrink: 0;
-            overflow: hidden;
-        }
-        .status-dot {
-            width: 7px; height: 7px;
-            border-radius: 50%;
-            background: var(--ed-muted);
-            flex-shrink: 0;
-            transition: background .25s;
-        }
-        .status-dot.ok    { background: var(--ok); }
-        .status-dot.error { background: #e03131; }
-        .status-label {
-            font-size: 0.7rem;
-            font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-            color: var(--ed-muted);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .status-label.ok    { color: #a6e3a1; }
-        .status-label.error { color: #f38ba8; }
+/* ── Footer Info Strip ── */
+.output-footer {
+  height: 32px;
+  display: none;
+  align-items: center;
+  gap: 22px;
+  padding: 0 16px;
+  background: #11111b;
+  border-top: 1px solid var(--out-border);
+  font-size: 0.7rem;
+  color: var(--out-muted);
+  flex-shrink: 0;
+}
+.output-footer.visible { display: flex; }
+.f-stat { display: flex; gap: 5px; align-items: center; }
+.f-stat strong { color: var(--out-text); font-weight: 800; font-size: 0.72rem; }
 
-        /* ─── Resize Handle ─────────────────────────────────────── */
-        .resize-handle {
-            flex: 0 0 5px;
-            background: var(--ed-border);
-            cursor: col-resize;
-            position: relative;
-            z-index: 5;
-            transition: background .2s;
-        }
-        .resize-handle::after {
-            content: '';
-            position: absolute;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            width: 3px; height: 40px;
-            background: var(--ed-dim);
-            border-radius: 2px;
-            transition: background .2s;
-        }
-        .resize-handle:hover,
-        .resize-handle.dragging { background: var(--accent); }
-        .resize-handle:hover::after,
-        .resize-handle.dragging::after { background: rgba(255,255,255,.5); }
+/* ── Placeholder ── */
+.placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 10px;
+  color: var(--out-muted);
+  text-align: center;
+  padding: 24px;
+  user-select: none;
+}
+.ph-icon  { font-size: 3rem; opacity: .22; }
+.ph-title { font-size: .9rem; font-weight: 700; color: #89b4fa; }
+.ph-sub   { font-size: .78rem; opacity: .65; line-height: 1.6; }
+.ph-sub code {
+  background: var(--out-surface);
+  border: 1px solid var(--out-border);
+  border-radius: 3px;
+  padding: 0 4px;
+  font-size: .72rem;
+  font-family: monospace;
+  color: var(--out-text);
+}
 
-        /* ─── Right Panel ───────────────────────────────────────── */
-        .output-panel {
-            flex: 1;
-            background: var(--out-base);
-            min-width: 0;
-        }
-        .output-panel .panel-bar {
-            background: #e8eaff;
-            color: var(--out-muted);
-            border-bottom: 1px solid var(--out-border);
-        }
-        .output-panel .btn-export {
-            background: #d0d4f0;
-            color: var(--out-text);
-        }
-        .output-panel .btn-export:hover { filter: brightness(.94); }
+/* ── JSON Table ── */
+.json-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  font-size: .8rem;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(70,90,200,.1);
+}
+.json-table thead th {
+  background: var(--th-bg);
+  color: #fff;
+  padding: 9px 13px;
+  text-align: left;
+  font-weight: 700;
+  white-space: nowrap;
+  border-right: 1px solid rgba(255,255,255,.12);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.json-table thead th:last-child { border-right: none; }
+.json-table tbody tr { transition: background .1s; }
+.json-table tbody tr:nth-child(odd)  { background: var(--out-surface); }
+.json-table tbody tr:nth-child(even) { background: var(--row-even); }
+.json-table tbody tr:hover { background: var(--row-hover); }
+.json-table td {
+  padding: 7px 13px;
+  border-bottom: 1px solid var(--out-border);
+  border-right: 1px solid var(--out-border);
+  vertical-align: middle;
+  max-width: 300px;
+  word-break: break-word;
+  line-height: 1.4;
+}
+.json-table td:last-child { border-right: none; }
+.col-idx {
+  color: var(--out-muted) !important;
+  font-size: .7rem !important;
+  text-align: center !important;
+  font-weight: 700 !important;
+  background: #252538 !important;
+  min-width: 42px;
+  user-select: none;
+}
 
-        /* ─── Breadcrumb Navigation Bar ─────────────────────────── */
-        /*
-         * Shown only when the user has drilled into nested data.
-         * All text content is set via textContent — XSS-safe.
-         */
-        .breadcrumb-bar {
-            display: none;           /* JS toggles .visible */
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 2px 4px;
-            padding: 0 14px;
-            min-height: 36px;
-            background: #dde3ff;
-            border-bottom: 2px solid #b3bcf5;
-            flex-shrink: 0;
-            font-size: .72rem;
-        }
-        .breadcrumb-bar.visible { display: flex; }
+/* ── Typed value spans ── */
+.v-null { color: var(--v-null); font-style: italic; }
+.v-bool { color: var(--v-bool); font-weight: 700; }
+.v-num  { color: var(--v-num); font-variant-numeric: tabular-nums; }
+.v-str  { color: var(--v-str); }
+.v-obj  {
+  display: block;
+  font-family: 'Cascadia Code','Fira Code','Consolas',monospace;
+  font-size: .72rem;
+  background: var(--v-object-bg);
+  color: var(--v-object-text);
+  padding: 3px 6px;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  max-height: 72px;
+  overflow-y: auto;
+}
 
-        /* "⌂ Root" home button — filled accent */
-        .crumb-home {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 3px 11px;
-            border: none;
-            border-radius: 5px;
-            font-weight: 800;
-            font-size: .7rem;
-            font-family: inherit;
-            cursor: pointer;
-            background: var(--accent);
-            color: #fff;
-            transition: filter .15s;
-        }
-        .crumb-home:hover         { filter: brightness(1.14); }
-        .crumb-home:focus-visible { outline: 2px solid var(--accent-dk); outline-offset: 2px; }
+/* ── Alerts ── */
+.alert {
+  border-radius: 8px;
+  padding: 14px 16px;
+  font-size: .82rem;
+  line-height: 1.6;
+}
+.alert-error {
+  background: var(--err-bg);
+  border: 1px solid var(--err-border);
+  color: var(--err-text);
+  font-family: 'Cascadia Code','Fira Code','Consolas',monospace;
+  white-space: pre-wrap;
+}
+.alert-error::before { content: '🔥 Parse Error\A'; font-weight: 800; white-space: pre; }
+.alert-info { background: #1e2a4a; border: 1px solid #2a3f7a; color: #89b4fa; }
+.alert-warn {
+  margin-top: 10px;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  color: var(--warn-text);
+  font-size: .76rem;
+}
 
-        /* Intermediate clickable crumbs */
-        .crumb-btn {
-            display: inline-flex;
-            align-items: center;
-            padding: 3px 10px;
-            border: 1px solid rgba(92,124,250,.4);
-            border-radius: 5px;
-            font-weight: 700;
-            font-size: .7rem;
-            font-family: inherit;
-            cursor: pointer;
-            background: rgba(255,255,255,.75);
-            color: var(--accent-dk);
-            transition: background .14s, border-color .14s;
-        }
-        .crumb-btn:hover         { background: rgba(92,124,250,.12); border-color: var(--accent); }
-        .crumb-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* ── Toast ── */
+.toast {
+  position: fixed;
+  bottom: 22px; right: 22px;
+  padding: 9px 18px;
+  border-radius: 6px;
+  font-size: .8rem; font-weight: 700;
+  color: #fff;
+  pointer-events: none;
+  z-index: 9999;
+  box-shadow: 0 4px 18px rgba(0,0,0,.22);
+  animation: toastIn .18s ease, toastOut .3s 1.7s ease forwards;
+}
+.toast.ok   { background: var(--ok); }
+.toast.fail { background: #e03131; }
+@keyframes toastIn  { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+@keyframes toastOut { from { opacity:1; } to { opacity:0; } }
 
-        /* Separator › */
-        .crumb-sep {
-            color: #8899cc;
-            font-weight: 900;
-            font-size: .8rem;
-            padding: 0 1px;
-            user-select: none;
-        }
+/* ════════════════════════════════════════════════════════
+   NEW — TREE VIEW
+   • Children built lazily on first expand (performance)
+   • Toggle ▶ collapsed / ▼ expanded
+   • Inline JSON preview shown while collapsed
+   • All text via textContent — XSS-safe
+════════════════════════════════════════════════════════ */
+.tree-root {
+  font-family: 'Cascadia Code','Fira Code','Consolas',monospace;
+  font-size: 0.81rem;
+  line-height: 1.5;
+  color: var(--out-text);
+}
+.tree-node { position: relative; }
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  min-height: 24px;
+  cursor: default;
+}
+.tree-row:hover { background: rgba(92,124,250,.07); }
 
-        /* Current (last) level — non-interactive */
-        .crumb-current {
-            font-weight: 800;
-            color: var(--out-text);
-            font-size: .72rem;
-            background: rgba(255,255,255,.9);
-            padding: 3px 10px;
-            border-radius: 5px;
-            border: 1px solid var(--out-border);
-        }
+/* Toggle ▶ / ▼ button */
+.tree-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px; height: 18px;
+  min-width: 18px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 0.65rem;
+  padding: 0;
+  font-family: inherit;
+  border-radius: 3px;
+  transition: color .15s, background .15s;
+  outline: none;
+  user-select: none;
+  flex-shrink: 0;
+}
+.tree-toggle-btn:hover       { background: rgba(92,124,250,.15); }
+.tree-toggle-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-        /* ─── Nested-value expand button ────────────────────────── */
-        .v-obj-wrapper {
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-            align-items: flex-start;
-        }
+/* Leaf nodes have no toggle — spacing placeholder */
+.tree-spacer {
+  display: inline-block;
+  width: 18px; min-width: 18px;
+  flex-shrink: 0;
+}
 
-        .btn-expand {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 3px 9px;
-            border: 1px solid var(--accent);
-            border-radius: 4px;
-            background: transparent;
-            color: var(--accent);
-            font-size: .67rem;
-            font-weight: 800;
-            font-family: inherit;
-            cursor: pointer;
-            letter-spacing: .2px;
-            white-space: nowrap;
-            outline: none;
-            transition: background .14s, color .14s;
-        }
-        .btn-expand:hover         { background: var(--accent); color: #fff; }
-        .btn-expand:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-        .btn-expand:active        { transform: scale(.96); }
+/* Key label */
+.tree-key {
+  color: var(--accent-dk);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.tree-colon {
+  color: var(--ed-dim);
+  margin-right: 4px;
+  flex-shrink: 0;
+}
 
-        /* ─── Output Scroll ─────────────────────────────────────── */
-        .output-scroll {
-            flex: 1;
-            overflow: auto;
-            padding: 16px;
-            min-height: 0;
-        }
-        .output-scroll::-webkit-scrollbar       { width: 8px; height: 8px; }
-        .output-scroll::-webkit-scrollbar-track { background: #eef0fa; }
-        .output-scroll::-webkit-scrollbar-thumb { background: #b8bce0; border-radius: 4px; }
+/* Collapsed inline preview badge */
+.tree-preview {
+  color: var(--v-object-text);
+  background: var(--v-object-bg);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 0.72rem;
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  border: 1px solid rgba(90,63,160,.15);
+  transition: background .13s;
+  flex-shrink: 1;
+  min-width: 0;
+}
+.tree-preview:hover { background: #d8d0f0; }
 
-        /* Footer info strip */
-        .output-footer {
-            height: 32px;
-            display: none;
-            align-items: center;
-            gap: 22px;
-            padding: 0 16px;
-            background: #e8eaff;
-            border-top: 1px solid var(--out-border);
-            font-size: 0.7rem;
-            color: var(--out-muted);
-            flex-shrink: 0;
-        }
-        .output-footer.visible { display: flex; }
-        .f-stat { display: flex; gap: 5px; align-items: center; }
-        .f-stat strong { color: var(--out-text); font-weight: 800; font-size: 0.72rem; }
+/* Count badge [ n items ] */
+.tree-count {
+  font-size: 0.65rem;
+  color: var(--out-muted);
+  background: rgba(92,124,250,.1);
+  border-radius: 10px;
+  padding: 1px 7px;
+  margin-left: 2px;
+  flex-shrink: 0;
+  border: 1px solid rgba(92,124,250,.18);
+}
 
-        /* ─── Placeholder ───────────────────────────────────────── */
-        .placeholder {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            gap: 10px;
-            color: var(--out-muted);
-            text-align: center;
-            padding: 24px;
-            user-select: none;
-        }
-        .ph-icon  { font-size: 3rem; opacity: .22; }
-        .ph-title { font-size: .9rem; font-weight: 700; color: #5060a0; }
-        .ph-sub   { font-size: .78rem; opacity: .65; line-height: 1.6; }
-        .ph-sub code {
-            background: var(--out-surface);
-            border: 1px solid var(--out-border);
-            border-radius: 3px;
-            padding: 0 4px;
-            font-size: .72rem;
-            font-family: monospace;
-            color: var(--out-text);
-        }
+/* Children container — indented */
+.tree-children {
+  margin-left: 22px;
+  border-left: 1.5px solid rgba(92,124,250,.18);
+  padding-left: 8px;
+}
+.tree-children.hidden { display: none; }
 
-        /* ─── JSON Table ────────────────────────────────────────── */
-        .json-table {
-            border-collapse: separate;
-            border-spacing: 0;
-            width: 100%;
-            font-size: .8rem;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 12px rgba(70,90,200,.1);
-        }
-        .json-table thead th {
-            background: var(--th-bg);
-            color: #fff;
-            padding: 9px 13px;
-            text-align: left;
-            font-weight: 700;
-            white-space: nowrap;
-            border-right: 1px solid rgba(255,255,255,.12);
-            position: sticky;
-            top: 0;
-            z-index: 2;
-        }
-        .json-table thead th:last-child { border-right: none; }
-        .json-table tbody tr { transition: background .1s; }
-        .json-table tbody tr:nth-child(odd)  { background: var(--out-surface); }
-        .json-table tbody tr:nth-child(even) { background: var(--row-even); }
-        .json-table tbody tr:hover           { background: var(--row-hover); }
-        .json-table td {
-            padding: 7px 13px;
-            border-bottom: 1px solid var(--out-border);
-            border-right:  1px solid var(--out-border);
-            vertical-align: middle;
-            max-width: 300px;
-            word-break: break-word;
-            line-height: 1.4;
-        }
-        .json-table td:last-child { border-right: none; }
+/* Leaf value styling */
+.tree-val-null { color: var(--v-null); font-style: italic; }
+.tree-val-bool { color: var(--v-bool); font-weight: 700; }
+.tree-val-num  { color: var(--v-num); }
+.tree-val-str  { color: var(--v-str); }
 
-        /* Row-number column */
-        .col-idx {
-            color: var(--out-muted) !important;
-            font-size: .7rem !important;
-            text-align: center !important;
-            font-weight: 700 !important;
-            background: #eef0ff !important;
-            min-width: 42px;
-            user-select: none;
-        }
+/* Expand-all / Collapse-all toolbar inside tree */
+.tree-toolbar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.tree-toolbar-label {
+  font-size: 0.68rem;
+  color: var(--out-muted);
+  margin-right: 4px;
+  font-family: inherit;
+  letter-spacing: 0.3px;
+}
 
-        /* Typed value spans */
-        .v-null  { color: var(--v-null);  font-style: italic; }
-        .v-bool  { color: var(--v-bool);  font-weight: 700; }
-        .v-num   { color: var(--v-num);   font-variant-numeric: tabular-nums; }
-        .v-str   { color: var(--v-str); }
-        .v-obj   {
-            display: block;
-            font-family: 'Cascadia Code','Fira Code','Consolas',monospace;
-            font-size: .72rem;
-            background: var(--v-obj-bg);
-            color: var(--v-obj-text);
-            padding: 3px 6px;
-            border-radius: 4px;
-            white-space: pre-wrap;
-            max-height: 72px;
-            overflow-y: auto;
-        }
+/* ════════════════════════════════════════════════════════
+   NEW — STATS MODAL
+   Dark panel matching the reference design
+════════════════════════════════════════════════════════ */
+.stats-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.55);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+.stats-backdrop.visible { display: flex; }
 
-        /* ─── Alerts ────────────────────────────────────────────── */
-        .alert {
-            border-radius: 8px;
-            padding: 14px 16px;
-            font-size: .82rem;
-            line-height: 1.6;
-        }
-        .alert-error {
-            background: var(--err-bg);
-            border: 1px solid var(--err-border);
-            color: var(--err-text);
-            font-family: 'Cascadia Code','Fira Code','Consolas',monospace;
-            white-space: pre-wrap;
-        }
-        .alert-error::before { content: '⚠  Parse Error\A'; font-weight: 800; white-space: pre; }
-        .alert-info  { background: #eff3ff; border: 1px solid #bac8ff; color: #364fc7; }
-        .alert-warn  {
-            margin-top: 10px;
-            background: var(--warn-bg);
-            border: 1px solid var(--warn-border);
-            color: var(--warn-text);
-            font-size: .76rem;
-        }
+.stats-panel {
+  background: #181825;
+  border: 1px solid #313244;
+  border-radius: 12px;
+  width: min(780px, 96vw);
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: 0 16px 60px rgba(0,0,0,.55);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  color: #cdd6f4;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  animation: statsIn .18s ease;
+}
+@keyframes statsIn {
+  from { opacity:0; transform: scale(.96) translateY(10px); }
+  to   { opacity:1; transform: scale(1)  translateY(0); }
+}
 
-        /* ─── Toast ─────────────────────────────────────────────── */
-        .toast {
-            position: fixed;
-            bottom: 22px; right: 22px;
-            padding: 9px 18px;
-            border-radius: 6px;
-            font-size: .8rem; font-weight: 700;
-            color: #fff;
-            pointer-events: none;
-            z-index: 9999;
-            box-shadow: 0 4px 18px rgba(0,0,0,.22);
-            animation: toastIn .18s ease, toastOut .3s 1.7s ease forwards;
-        }
-        .toast.ok   { background: var(--ok); }
-        .toast.fail { background: #e03131;    }
-        @keyframes toastIn  { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
-        @keyframes toastOut { from { opacity:1; } to { opacity:0; } }
+.stats-panel::-webkit-scrollbar       { width: 6px; }
+.stats-panel::-webkit-scrollbar-track { background: transparent; }
+.stats-panel::-webkit-scrollbar-thumb { background: #45475a; border-radius: 3px; }
 
-        /* ─── Responsive ────────────────────────────────────────── */
-        @media (max-width: 680px) {
-            .workspace     { flex-direction: column; }
-            .editor-panel  { flex: 0 0 50%; }
-            .resize-handle { display: none; }
-            .output-panel  { flex: 1; }
-            .header-right  { display: none; }
-        }
-    </style>
+/* Stats header row */
+.stats-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px 12px;
+  border-bottom: 1px solid #313244;
+  flex-shrink: 0;
+}
+.stats-title {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #89b4fa;
+}
+.stats-close {
+  background: none;
+  border: none;
+  color: #6c7086;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-family: inherit;
+  line-height: 1;
+  transition: background .14s, color .14s;
+  outline: none;
+}
+.stats-close:hover       { background: #313244; color: #cdd6f4; }
+.stats-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Top metrics row */
+.stats-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  border-bottom: 1px solid #313244;
+  flex-shrink: 0;
+}
+.stats-metric {
+  flex: 1 1 100px;
+  padding: 14px 20px;
+  border-right: 1px solid #313244;
+}
+.stats-metric:last-child { border-right: none; }
+.stats-metric-label {
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  color: #6c7086;
+  margin-bottom: 5px;
+}
+.stats-metric-value {
+  font-size: 1.7rem;
+  font-weight: 800;
+  color: #cdd6f4;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Body: two-column layout */
+.stats-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  flex: 1;
+}
+.stats-col {
+  flex: 1 1 300px;
+  padding: 18px 20px;
+  border-right: 1px solid #313244;
+  min-width: 0;
+}
+.stats-col:last-child { border-right: none; }
+.stats-col-title {
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #6c7086;
+  margin-bottom: 14px;
+}
+
+/* Value-type bars */
+.vt-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.vt-label {
+  width: 68px;
+  font-size: 0.75rem;
+  color: #cdd6f4;
+  flex-shrink: 0;
+}
+.vt-bar-track {
+  flex: 1;
+  height: 7px;
+  background: #313244;
+  border-radius: 4px;
+  overflow: hidden;
+  min-width: 0;
+}
+.vt-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: #00b4d8;
+  transition: width .4s cubic-bezier(.4,0,.2,1);
+  min-width: 2px;
+}
+.vt-count {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #a6adc8;
+  width: 32px;
+  text-align: right;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Top keys list */
+.topkey-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid #1e1e2e;
+  gap: 12px;
+}
+.topkey-row:last-child { border-bottom: none; }
+.topkey-name {
+  font-family: 'Cascadia Code','Fira Code','Consolas',monospace;
+  font-size: 0.74rem;
+  color: #89b4fa;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.topkey-count {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #a6adc8;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* No-data message inside stats */
+.stats-nodata {
+  text-align: center;
+  padding: 40px 20px;
+  color: #6c7086;
+  font-size: 0.85rem;
+}
+
+/* ── Responsive ── */
+@media (max-width: 680px) {
+  .workspace { flex-direction: column; }
+  .editor-panel { flex: 0 0 40% !important; }
+  .resize-handle { display: none; }
+  .stats-metrics { flex-direction: column; }
+  .stats-metric  { border-right: none; border-bottom: 1px solid #313244; }
+}
+</style>
 </head>
 <body>
 
-<!-- ════════════════════════════════════════
-     APP HEADER
-════════════════════════════════════════ -->
 <header class="app-header" role="banner">
-    <div class="header-left">
-        <span class="header-icon" aria-hidden="true">&#x7B;&#x7D;</span>
-        JSON → Table Converter
-        <span class="badge">Offline</span>
-        <span class="badge sec">Secure</span>
-    </div>
-    <div class="header-right" aria-label="Security attestations">
-        <span>No External Resources</span>
-        <span aria-hidden="true"> · </span>
-        <span>XSS Protected</span>
-        <span aria-hidden="true"> · </span>
-        <span>OWASP Compliant</span>
-    </div>
+  <div class="header-left">
+    <span class="header-icon" aria-hidden="true">&#x7B;</span>
+    JSON + Table Converter
+    <span class="badge">Offline</span>
+    <span class="badge sec">Secure</span>
+  </div>
+  <div class="header-right" aria-label="Security attestations">
+    <span>No External Resources</span>
+    <span aria-hidden="true">·</span>
+    <span>XSS Protected</span>
+    <span aria-hidden="true">·</span>
+    <span>OWASP Compliant</span>
+  </div>
 </header>
 
-<!-- ════════════════════════════════════════
-     WORKSPACE
-════════════════════════════════════════ -->
 <main class="workspace" id="workspace" role="main">
 
-    <!-- ── LEFT: JSON Editor ───────────────────────────────── -->
-    <section class="panel editor-panel" id="editorPanel"
-             aria-label="JSON input panel">
+  <!-- ── Left: JSON Editor ── -->
+  <section class="panel editor-panel" id="editorPanel" aria-label="JSON input panel">
+    <div class="panel-bar" role="toolbar" aria-label="Editor toolbar">
+      <span>JSON INPUT</span>
+      <div class="bar-actions">
+        <button class="btn btn-format"  id="btnFormat"  type="button" title="Pretty-print JSON (Ctrl+Shift+F)">&#x2728; Format</button>
+        <button class="btn btn-convert" id="btnConvert" type="button" title="Convert to table (Ctrl+Enter)">&#x25B6; Convert</button>
+        <button class="btn btn-clear"   id="btnClear"   type="button" title="Clear all">&#x2715; Clear</button>
+      </div>
+    </div>
 
-        <div class="panel-bar" role="toolbar" aria-label="Editor toolbar">
-            <span>&#x1F4C4;&nbsp; JSON Input</span>
-            <div class="bar-actions">
-                <button class="btn btn-format"  id="btnFormat"  type="button" title="Pretty-print JSON (Ctrl+Shift+F)">&#x2728; Format</button>
-                <button class="btn btn-convert" id="btnConvert" type="button" title="Convert to table (Ctrl+Enter)">Convert &#x2192;</button>
-                <button class="btn btn-clear"   id="btnClear"   type="button" title="Clear all">&#x2715; Clear</button>
-            </div>
+    <textarea id="jsonInput"
+              aria-label="JSON input area"
+              placeholder="Paste your JSON here…&#10;&#10;Supported shapes:&#10;  • Array of objects  →  multi-column table&#10;  • Single object     →  Key / Value table&#10;  • Array of values   →  Index / Value table&#10;&#10;Shortcuts:&#10;  Ctrl+Enter      Convert&#10;  Ctrl+Shift+F    Format&#10;  Tab             Indent (2 spaces)"></textarea>
+
+    <div class="status-bar" role="status" aria-live="polite">
+      <div class="status-dot" id="statusDot"></div>
+      <span class="status-label" id="statusLabel">Ready — paste JSON and press Convert</span>
+    </div>
+  </section>
+
+  <!-- ── Resize Handle ── -->
+  <div class="resize-handle" id="resizeHandle"
+       role="separator" aria-orientation="vertical"
+       tabindex="0" title="Drag to resize panels (Arrow keys also work)"></div>
+
+  <!-- ── Right: Output Panel ── -->
+  <section class="panel output-panel" id="outputPanel" aria-label="Table output panel">
+    <div class="panel-bar" role="toolbar" aria-label="Output toolbar">
+      <span>OUTPUT</span>
+      <div class="bar-actions">
+
+        <!-- NEW: View toggle -->
+        <div class="view-toggle" role="group" aria-label="View mode">
+          <button class="btn-view active" id="btnViewTable" type="button" aria-pressed="true"  title="Table view">&#x229E; Table</button>
+          <button class="btn-view"        id="btnViewTree"  type="button" aria-pressed="false" title="Tree view">&#x25B6; Tree</button>
         </div>
 
-        <textarea
-            id="jsonInput"
-            aria-label="JSON input area"
-            placeholder="Paste your JSON here…&#10;&#10;Supported shapes:&#10;  • Array of objects  →  full table&#10;  • Single object     →  key / value table&#10;  • Array of values   →  index / value table&#10;&#10;Nested objects/arrays show an Expand button.&#10;&#10;Keyboard shortcuts:&#10;  Ctrl + Enter      → Convert&#10;  Ctrl + Shift + F  → Format / Pretty-print&#10;  Tab               → Insert 2 spaces"
-            spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"
-        ></textarea>
+        <!-- NEW: Stats button -->
+        <button class="btn btn-stats" id="btnStats" type="button" title="Show JSON statistics">&#x25A6; Stats</button>
 
-        <div class="status-bar" role="status" aria-live="polite">
-            <div class="status-dot"    id="statusDot"   aria-hidden="true"></div>
-            <span class="status-label" id="statusLabel">Ready — paste JSON and press Convert</span>
-        </div>
+        <button class="btn btn-export" id="btnCopyCsv"  type="button" title="Copy table as CSV">&#x2398; CSV</button>
+        <button class="btn btn-export" id="btnCopyHtml" type="button" title="Copy table as standalone HTML">&#x2398; HTML</button>
+      </div>
+    </div>
 
-    </section>
+    <!-- Breadcrumb — table-mode only; hidden in tree mode -->
+    <nav class="breadcrumb-bar" id="breadcrumbBar"
+         role="navigation" aria-label="Expansion path navigation"></nav>
 
-    <!-- ── RESIZE HANDLE ───────────────────────────────────── -->
-    <div class="resize-handle" id="resizeHandle"
-         role="separator" aria-orientation="vertical"
-         aria-label="Resize panels (drag or use arrow keys)" tabindex="0"></div>
+    <div class="output-scroll" id="outputScroll"
+         aria-live="polite" aria-label="Output area">
+      <div class="placeholder" id="placeholder">
+        <div class="ph-icon" aria-hidden="true">&#x1F4CB;</div>
+        <p class="ph-title">No data yet</p>
+        <p class="ph-sub">
+          Paste JSON on the left, then click <strong>Convert</strong><br/>
+          or press <code>Ctrl</code> + <code>Enter</code><br/>
+          Switch between <strong>Table</strong> and <strong>Tree</strong> views above.<br/>
+          Click <strong>&#x25A6; Stats</strong> for a structural analysis.
+        </p>
+      </div>
+    </div>
 
-    <!-- ── RIGHT: Table Output ─────────────────────────────── -->
-    <section class="panel output-panel" id="outputPanel"
-             aria-label="Table output panel">
-
-        <div class="panel-bar" role="toolbar" aria-label="Output toolbar">
-            <span>&#x1F4CA;&nbsp; Table Output</span>
-            <div class="bar-actions">
-                <button class="btn btn-export" id="btnCopyCsv"  type="button" title="Copy table as CSV">&#x1F4CB; CSV</button>
-                <button class="btn btn-export" id="btnCopyHtml" type="button" title="Copy table as standalone HTML">&#x1F4CB; HTML</button>
-            </div>
-        </div>
-
-        <!--
-            BREADCRUMB NAV
-            Shown only after the first nested expansion.
-            Built entirely with textContent — no innerHTML with user data.
-        -->
-        <nav class="breadcrumb-bar" id="breadcrumbBar"
-             role="navigation"
-             aria-label="Expansion path navigation">
-        </nav>
-
-        <div class="output-scroll" id="outputScroll"
-             aria-live="polite" aria-label="Table output area">
-            <div class="placeholder" id="placeholder">
-                <div class="ph-icon" aria-hidden="true">&#x1F4CB;</div>
-                <p class="ph-title">No data yet</p>
-                <p class="ph-sub">
-                    Paste JSON on the left, then click <strong>Convert</strong><br>
-                    or press <code>Ctrl</code> + <code>Enter</code>.<br><br>
-                    Nested objects &amp; arrays will show an<br>
-                    <strong>&#x2295; Expand</strong> button inside their cells.
-                </p>
-            </div>
-        </div>
-
-        <div class="output-footer" id="outputFooter" aria-label="Table statistics">
-            <div class="f-stat">Rows    <strong id="infoRows">0</strong></div>
-            <div class="f-stat">Columns <strong id="infoCols">0</strong></div>
-            <div class="f-stat">Source type <strong id="infoType">—</strong></div>
-            <div class="f-stat" id="infoDepthWrap" style="display:none">
-                Depth <strong id="infoDepth">0</strong>
-            </div>
-        </div>
-
-    </section>
-
+    <footer class="output-footer" id="outputFooter" aria-label="Table statistics">
+      <div class="f-stat">Rows   <strong id="infoRows">0</strong></div>
+      <div class="f-stat">Columns <strong id="infoCols">0</strong></div>
+      <div class="f-stat">Source type <strong id="infoType">—</strong></div>
+      <div class="f-stat" id="infoDepthWrap" style="display:none">
+        Depth <strong id="infoDepth">0</strong>
+      </div>
+    </footer>
+  </section>
 </main>
 
-<!-- ════════════════════════════════════════
-     APPLICATION SCRIPT
+<!-- ════════════════════════════════════════════════════════
+     NEW — STATS MODAL
+     All content populated by JS via textContent — XSS-safe.
+════════════════════════════════════════════════════════ -->
+<div class="stats-backdrop" id="statsBackdrop"
+     role="dialog" aria-modal="true" aria-label="JSON Statistics">
+  <div class="stats-panel" id="statsPanel">
+    <div class="stats-header">
+      <span class="stats-title">&#x25A6; JSON Statistics</span>
+      <button class="stats-close" id="statsClose" type="button"
+              aria-label="Close statistics panel">&#x2715;</button>
+    </div>
+    <!-- Metrics and body injected by buildStatsPanel() -->
+  </div>
+</div>
 
-     Security notes
-     ══════════════
-     • 'use strict' throughout — no implicit globals
-     • All user-supplied values written via textContent only
-     • No eval(), no Function(), no dynamic code execution
-     • No network calls of any kind
-     • JSON parsed exclusively via JSON.parse()
-     • Closures used for all event listeners inside loops
-     • Navigation stack stores raw parsed values (already validated)
-════════════════════════════════════════ -->
 <script>
 (function () {
-    'use strict';
+'use strict';
 
-    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-       1. SECURITY LIMITS
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-    var LIMIT = Object.freeze({
-        INPUT_BYTES    : 5 * 1024 * 1024,   // 5 MB
-        MAX_ROWS       : 10000,
-        MAX_COLS       : 200,
-        MAX_DEPTH      : 20,
-        MAX_CELL_CHARS : 500,
-        MAX_DEPTH_NODES: 250000,
+/* ══════════════════════════════════════════════════════════
+   1. SECURITY LIMITS
+══════════════════════════════════════════════════════════ */
+var LIMIT = Object.freeze({
+  INPUT_BYTES    : 5 * 1024 * 1024,
+  MAX_ROWS       : 10000,
+  MAX_COLS       : 200,
+  MAX_DEPTH      : 20,
+  MAX_CELL_CHARS : 500,
+  MAX_DEPTH_NODES: 250000,
+  TREE_MAX_NODES : 50000,   // cap tree rendering to avoid DOM flood
+  STATS_TOP_KEYS : 15,      // top-N keys shown in stats panel
+});
+
+/* ══════════════════════════════════════════════════════════
+   2. DOM REFERENCES
+══════════════════════════════════════════════════════════ */
+var ui = Object.freeze({
+  jsonInput    : document.getElementById('jsonInput'),
+  btnConvert   : document.getElementById('btnConvert'),
+  btnFormat    : document.getElementById('btnFormat'),
+  btnClear     : document.getElementById('btnClear'),
+  btnCopyCsv   : document.getElementById('btnCopyCsv'),
+  btnCopyHtml  : document.getElementById('btnCopyHtml'),
+  btnStats     : document.getElementById('btnStats'),
+  btnViewTable : document.getElementById('btnViewTable'),
+  btnViewTree  : document.getElementById('btnViewTree'),
+  outputScroll : document.getElementById('outputScroll'),
+  placeholder  : document.getElementById('placeholder'),
+  statusDot    : document.getElementById('statusDot'),
+  statusLabel  : document.getElementById('statusLabel'),
+  outputFooter : document.getElementById('outputFooter'),
+  infoRows     : document.getElementById('infoRows'),
+  infoCols     : document.getElementById('infoCols'),
+  infoType     : document.getElementById('infoType'),
+  infoDepthWrap: document.getElementById('infoDepthWrap'),
+  infoDepth    : document.getElementById('infoDepth'),
+  resizeHandle : document.getElementById('resizeHandle'),
+  editorPanel  : document.getElementById('editorPanel'),
+  workspace    : document.getElementById('workspace'),
+  breadcrumbBar: document.getElementById('breadcrumbBar'),
+  statsBackdrop: document.getElementById('statsBackdrop'),
+  statsPanel   : document.getElementById('statsPanel'),
+  statsClose   : document.getElementById('statsClose'),
+});
+
+/* ══════════════════════════════════════════════════════════
+   3. MUTABLE STATE
+══════════════════════════════════════════════════════════ */
+var state = {
+  lastParsed  : null,
+  exportMeta  : null,
+  viewMode    : 'table',    // 'table' | 'tree'
+  navStack    : [],
+  navLabels   : [],
+};
+
+/* ══════════════════════════════════════════════════════════
+   4. UTILITIES
+══════════════════════════════════════════════════════════ */
+function toSafeString(val) {
+  if (val === null)      return 'null';
+  if (val === undefined) return '';
+  if (typeof val === 'object') {
+    try {
+      var s = JSON.stringify(val);
+      return s.length > LIMIT.MAX_CELL_CHARS
+        ? s.slice(0, LIMIT.MAX_CELL_CHARS) + '\u2026'
+        : s;
+    } catch (_) { return '[unserializable]'; }
+  }
+  var str = String(val);
+  return str.length > LIMIT.MAX_CELL_CHARS
+    ? str.slice(0, LIMIT.MAX_CELL_CHARS) + '\u2026'
+    : str;
+}
+
+/** Iterative depth validator — prevents stack overflow on pathological input. */
+function checkDepth(root) {
+  var stack = [{ node: root, depth: 0 }];
+  var nodeCount = 0;
+  while (stack.length) {
+    var frame = stack.pop();
+    nodeCount++;
+    if (nodeCount > LIMIT.MAX_DEPTH_NODES) break;
+    if (frame.depth > LIMIT.MAX_DEPTH) {
+      throw new Error(
+        'JSON nesting depth exceeds the allowed maximum of '
+        + LIMIT.MAX_DEPTH + ' levels.\n'
+        + 'This limit exists to prevent browser memory issues.'
+      );
+    }
+    if (frame.node !== null && typeof frame.node === 'object') {
+      var keys = Object.keys(frame.node);
+      for (var i = 0; i < keys.length; i++) {
+        stack.push({ node: frame.node[keys[i]], depth: frame.depth + 1 });
+      }
+    }
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+   5. STATUS BAR
+══════════════════════════════════════════════════════════ */
+function setStatus(msg, type) {
+  ui.statusLabel.textContent = msg;
+  ui.statusLabel.className   = 'status-label' + (type ? ' ' + type : '');
+  ui.statusDot.className     = 'status-dot'   + (type ? ' ' + type : '');
+}
+
+/* ══════════════════════════════════════════════════════════
+   6. LIVE VALIDATION (debounced 300 ms)
+══════════════════════════════════════════════════════════ */
+var liveValidateTimer = null;
+function liveValidate() {
+  clearTimeout(liveValidateTimer);
+  liveValidateTimer = setTimeout(function () {
+    var raw = ui.jsonInput.value;
+    if (!raw.trim()) { setStatus('Ready \u2014 paste JSON and press Convert', ''); return; }
+    if (raw.length > LIMIT.INPUT_BYTES) { setStatus('Input exceeds 5\u202fMB limit.', 'error'); return; }
+    try { JSON.parse(raw); setStatus('Valid JSON \u2713', 'ok'); }
+    catch (e) { setStatus(e.message, 'error'); }
+  }, 300);
+}
+
+/* ══════════════════════════════════════════════════════════
+   7. BREADCRUMB & TABLE NAVIGATION
+══════════════════════════════════════════════════════════ */
+function updateBreadcrumb() {
+  var nav = ui.breadcrumbBar;
+  while (nav.firstChild) nav.removeChild(nav.firstChild);
+
+  // Breadcrumb only makes sense in table mode
+  if (state.navStack.length === 0 || state.viewMode !== 'table') {
+    nav.className = 'breadcrumb-bar';
+    ui.infoDepthWrap.style.display = 'none';
+    return;
+  }
+
+  nav.className = 'breadcrumb-bar visible';
+  ui.infoDepthWrap.style.display = 'flex';
+  ui.infoDepth.textContent = String(state.navStack.length);
+
+  state.navLabels.forEach(function (label, i) {
+    if (i > 0) {
+      var sep = document.createElement('span');
+      sep.className = 'crumb-sep';
+      sep.setAttribute('aria-hidden', 'true');
+      sep.textContent = '\u203a';
+      nav.appendChild(sep);
+    }
+    var isLast = (i === state.navLabels.length - 1);
+    if (isLast) {
+      var curr = document.createElement('span');
+      curr.className = 'crumb-current';
+      curr.setAttribute('aria-current', 'page');
+      curr.textContent = label;
+      nav.appendChild(curr);
+    } else {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = (i === 0) ? 'crumb-home' : 'crumb-btn';
+      btn.textContent = (i === 0) ? '\u2302 ' + label : label;
+      btn.title = 'Go back to: ' + label;
+      (function (idx) {
+        btn.addEventListener('click', function () { doNavTo(idx); });
+      }(i));
+      nav.appendChild(btn);
+    }
+  });
+}
+
+function doExpand(value, label) {
+  if (state.navStack.length === 0) state.navLabels = ['Root'];
+  state.navStack.push({ data: state.lastParsed });
+  state.navLabels.push(String(label));
+  state.lastParsed = value;
+  renderOutput(value);
+  updateBreadcrumb();
+  ui.outputScroll.scrollTop = 0;
+}
+
+function doNavTo(labelIndex) {
+  var entry = state.navStack[labelIndex];
+  state.lastParsed = entry.data;
+  if (labelIndex === 0) {
+    state.navStack  = [];
+    state.navLabels = [];
+  } else {
+    state.navStack  = state.navStack.slice(0, labelIndex);
+    state.navLabels = state.navLabels.slice(0, labelIndex + 1);
+  }
+  renderOutput(entry.data);
+  updateBreadcrumb();
+  ui.outputScroll.scrollTop = 0;
+}
+
+/* ══════════════════════════════════════════════════════════
+   8. TABLE DOM BUILDERS
+══════════════════════════════════════════════════════════ */
+function makeTh(text) {
+  var th = document.createElement('th');
+  th.scope = 'col';
+  th.textContent = text;
+  return th;
+}
+function makeIndexTd(n) {
+  var td = document.createElement('td');
+  td.className = 'col-idx';
+  td.textContent = String(n);
+  return td;
+}
+
+function makeValueTd(value, keyLabel) {
+  var lbl = (keyLabel != null) ? String(keyLabel) : 'value';
+  var td  = document.createElement('td');
+  var span, display, isArray, count, isEmpty, typeStr,
+      wrapper, preview, expandBtn;
+
+  if (value === null) {
+    span = document.createElement('span');
+    span.className = 'v-null';
+    span.textContent = 'null';
+    td.appendChild(span);
+
+  } else if (value === undefined) {
+    span = document.createElement('span');
+    span.className = 'v-null';
+    span.textContent = '\u2014';
+    td.appendChild(span);
+
+  } else if (typeof value === 'boolean') {
+    span = document.createElement('span');
+    span.className = 'v-bool';
+    span.textContent = value ? 'true' : 'false';
+    td.appendChild(span);
+
+  } else if (typeof value === 'number') {
+    span = document.createElement('span');
+    span.className = 'v-num';
+    span.textContent = String(value);
+    td.appendChild(span);
+
+  } else if (typeof value === 'string') {
+    span = document.createElement('span');
+    span.className = 'v-str';
+    display = value.length > LIMIT.MAX_CELL_CHARS
+      ? value.slice(0, LIMIT.MAX_CELL_CHARS) + '\u2026'
+      : value;
+    span.textContent = display;
+    if (value.length > LIMIT.MAX_CELL_CHARS) {
+      td.title = 'Truncated. Full length: ' + value.length + ' chars';
+    }
+    td.appendChild(span);
+
+  } else if (typeof value === 'object') {
+    isArray  = Array.isArray(value);
+    count    = isArray ? value.length : Object.keys(value).length;
+    isEmpty  = (count === 0);
+    typeStr  = isArray ? 'Array' : 'Object';
+
+    wrapper = document.createElement('div');
+    wrapper.className = 'v-obj-wrapper';
+
+    preview = document.createElement('span');
+    preview.className = 'v-obj';
+    preview.textContent = toSafeString(value);
+    wrapper.appendChild(preview);
+
+    if (!isEmpty) {
+      expandBtn = document.createElement('button');
+      expandBtn.type = 'button';
+      expandBtn.className = 'btn-expand';
+      expandBtn.textContent =
+        '\u2295 Expand ' + typeStr
+        + ' (' + count + '\u202f'
+        + (isArray ? 'item' : 'key')
+        + (count !== 1 ? 's' : '') + ')';
+      expandBtn.title =
+        'Drill into this ' + typeStr.toLowerCase()
+        + ' (' + count + '\u202f'
+        + (isArray ? 'item' : 'key')
+        + (count !== 1 ? 's' : '') + ')';
+      (function (v, l) {
+        expandBtn.addEventListener('click', function () { doExpand(v, l); });
+      }(value, lbl));
+      wrapper.appendChild(expandBtn);
+    }
+    td.appendChild(wrapper);
+
+  } else {
+    span = document.createElement('span');
+    span.textContent = String(value);
+    td.appendChild(span);
+  }
+  return td;
+}
+
+function collectKeys(arr) {
+  var seen = Object.create(null);
+  var keys = [];
+  for (var i = 0; i < arr.length && keys.length < LIMIT.MAX_COLS; i++) {
+    var item = arr[i];
+    if (item !== null && typeof item === 'object' && !Array.isArray(item)) {
+      var ks = Object.keys(item);
+      for (var j = 0; j < ks.length && keys.length < LIMIT.MAX_COLS; j++) {
+        if (!seen[ks[j]]) { seen[ks[j]] = true; keys.push(ks[j]); }
+      }
+    }
+  }
+  return keys;
+}
+
+/* ══════════════════════════════════════════════════════════
+   9. TABLE BUILDERS
+══════════════════════════════════════════════════════════ */
+function makeTable() {
+  var t = document.createElement('table');
+  t.className = 'json-table';
+  t.setAttribute('role', 'grid');
+  return t;
+}
+
+function buildArrayOfObjects(data) {
+  var headers = collectKeys(data);
+  var rows    = data.slice(0, LIMIT.MAX_ROWS);
+  if (headers.length === 0) { return buildPrimitiveArray(rows); }
+
+  var table = makeTable();
+  var thead = document.createElement('thead');
+  var hRow  = document.createElement('tr');
+  var idxTh = makeTh('#');
+  idxTh.style.width = '44px';
+  hRow.appendChild(idxTh);
+  headers.forEach(function (k) { hRow.appendChild(makeTh(k)); });
+  thead.appendChild(hRow);
+  table.appendChild(thead);
+
+  var tbody = document.createElement('tbody');
+  rows.forEach(function (item, i) {
+    var tr = document.createElement('tr');
+    tr.appendChild(makeIndexTd(i + 1));
+    if (item !== null && typeof item === 'object' && !Array.isArray(item)) {
+      headers.forEach(function (k) { tr.appendChild(makeValueTd(item[k], k)); });
+    } else {
+      var td = makeValueTd(item, 'row\u202f' + (i + 1));
+      td.colSpan = headers.length;
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+
+  state.exportMeta = { type: 'array-objects', headers: ['#'].concat(headers), rows: rows };
+  return table;
+}
+
+function buildObject(obj) {
+  var keys  = Object.keys(obj);
+  var table = makeTable();
+
+  var thead = document.createElement('thead');
+  var hRow  = document.createElement('tr');
+  hRow.appendChild(makeTh('Key'));
+  hRow.appendChild(makeTh('Value'));
+  thead.appendChild(hRow);
+  table.appendChild(thead);
+
+  var tbody = document.createElement('tbody');
+  keys.slice(0, LIMIT.MAX_ROWS).forEach(function (k) {
+    var tr      = document.createElement('tr');
+    var keyTd   = document.createElement('td');
+    var keySpan = document.createElement('span');
+    keySpan.className = 'v-str';
+    keySpan.textContent = k;
+    keyTd.appendChild(keySpan);
+    tr.appendChild(keyTd);
+    tr.appendChild(makeValueTd(obj[k], k));
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+
+  state.exportMeta = {
+    type   : 'object',
+    headers: ['Key', 'Value'],
+    rows   : keys.map(function (k) { return { Key: k, Value: obj[k] }; }),
+  };
+  return table;
+}
+
+function buildPrimitiveArray(data) {
+  var rows  = data.slice(0, LIMIT.MAX_ROWS);
+  var table = makeTable();
+
+  var thead = document.createElement('thead');
+  var hRow  = document.createElement('tr');
+  hRow.appendChild(makeTh('#'));
+  hRow.appendChild(makeTh('Value'));
+  thead.appendChild(hRow);
+  table.appendChild(thead);
+
+  var tbody = document.createElement('tbody');
+  rows.forEach(function (item, i) {
+    var tr = document.createElement('tr');
+    tr.appendChild(makeIndexTd(i + 1));
+    tr.appendChild(makeValueTd(item, '[' + (i + 1) + ']'));
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+
+  state.exportMeta = { type: 'primitive-array', headers: ['#', 'Value'], rows: rows };
+  return table;
+}
+
+function dispatchBuild(data) {
+  if (Array.isArray(data)) {
+    if (data.length === 0) return null;
+    var hasObjects = data.some(function (x) {
+      return x !== null && typeof x === 'object';
+    });
+    return hasObjects ? buildArrayOfObjects(data) : buildPrimitiveArray(data);
+  }
+  if (data !== null && typeof data === 'object') { return buildObject(data); }
+
+  var div = document.createElement('div');
+  div.className = 'alert alert-info';
+  var lbl = document.createElement('strong');
+  lbl.textContent = 'Primitive (' + typeof data + '): ';
+  var val = document.createElement('span');
+  val.textContent = String(data);
+  div.appendChild(lbl);
+  div.appendChild(val);
+  state.exportMeta = null;
+  return div;
+}
+
+/* ══════════════════════════════════════════════════════════
+   10. TREE VIEW BUILDER
+   • Each node is built lazily — children rendered on first toggle
+   • All keys/values written via textContent only
+   • Capped at TREE_MAX_NODES to prevent DOM flooding
+══════════════════════════════════════════════════════════ */
+
+/** nodeCount tracks total rendered nodes to enforce the cap. */
+var treeNodeCount = 0;
+
+/**
+ * makeTreeNode
+ * Builds one tree row for a key→value pair (or a bare root value).
+ *
+ * @param {string|null} key        - object key or array index string, null for root
+ * @param {*}           value      - the JSON value
+ * @param {boolean}     [expanded] - start expanded (used for shallow roots)
+ * @returns {HTMLElement} .tree-node div
+ */
+function makeTreeNode(key, value, expanded) {
+  treeNodeCount++;
+  var isObj  = (value !== null && typeof value === 'object');
+  var isArr  = Array.isArray(value);
+  var count  = isObj ? (isArr ? value.length : Object.keys(value).length) : 0;
+  var isEmpty = isObj && count === 0;
+
+  var node = document.createElement('div');
+  node.className = 'tree-node';
+
+  /* ── Row ── */
+  var row = document.createElement('div');
+  row.className = 'tree-row';
+
+  /* Toggle button or spacer */
+  if (isObj && !isEmpty) {
+    var toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = 'tree-toggle-btn';
+    toggleBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    toggleBtn.textContent = expanded ? '\u25BC' : '\u25B6';
+    row.appendChild(toggleBtn);
+  } else {
+    var spacer = document.createElement('span');
+    spacer.className = 'tree-spacer';
+    spacer.setAttribute('aria-hidden', 'true');
+    row.appendChild(spacer);
+  }
+
+  /* Key label */
+  if (key !== null) {
+    var keySpan = document.createElement('span');
+    keySpan.className = 'tree-key';
+    keySpan.textContent = key;
+    row.appendChild(keySpan);
+
+    var colon = document.createElement('span');
+    colon.className = 'tree-colon';
+    colon.textContent = ':';
+    row.appendChild(colon);
+  }
+
+  /* Value or preview */
+  if (!isObj) {
+    /* Leaf value */
+    var valSpan = document.createElement('span');
+    if (value === null) {
+      valSpan.className = 'tree-val-null';
+      valSpan.textContent = 'null';
+    } else if (typeof value === 'boolean') {
+      valSpan.className = 'tree-val-bool';
+      valSpan.textContent = value ? 'true' : 'false';
+    } else if (typeof value === 'number') {
+      valSpan.className = 'tree-val-num';
+      valSpan.textContent = String(value);
+    } else {
+      valSpan.className = 'tree-val-str';
+      var display = value.length > LIMIT.MAX_CELL_CHARS
+        ? value.slice(0, LIMIT.MAX_CELL_CHARS) + '\u2026'
+        : value;
+      valSpan.textContent = '\u201C' + display + '\u201D';
+      if (value.length > LIMIT.MAX_CELL_CHARS) {
+        valSpan.title = 'Truncated. Full length: ' + value.length + ' chars';
+      }
+    }
+    row.appendChild(valSpan);
+
+  } else {
+    /* Object/Array — show bracket + count badge + inline preview */
+    var openBracket = document.createElement('span');
+    openBracket.style.color   = '#6c7086';
+    openBracket.style.fontWeight = '700';
+    openBracket.textContent   = isArr ? '[' : '{';
+    row.appendChild(openBracket);
+
+    var countBadge = document.createElement('span');
+    countBadge.className = 'tree-count';
+    countBadge.textContent = count + '\u202f' + (isArr ? 'item' : 'key') + (count !== 1 ? 's' : '');
+    row.appendChild(countBadge);
+
+    if (!isEmpty && !expanded) {
+      /* Collapsed preview — clicking it also toggles */
+      var previewSpan = document.createElement('span');
+      previewSpan.className = 'tree-preview';
+      previewSpan.textContent = toSafeString(value);
+      previewSpan.title = 'Click to expand';
+      row.appendChild(previewSpan);
+    }
+  }
+
+  node.appendChild(row);
+
+  /* ── Children (lazy) ── */
+  if (isObj && !isEmpty) {
+    var children = document.createElement('div');
+    children.className = 'tree-children' + (expanded ? '' : ' hidden');
+    var childrenBuilt = false;
+
+    /* Build children DOM lazily on first expand */
+    function buildChildren() {
+      if (childrenBuilt) return;
+      childrenBuilt = true;
+      var childKeys = Object.keys(value);
+      for (var i = 0; i < childKeys.length; i++) {
+        if (treeNodeCount >= LIMIT.TREE_MAX_NODES) {
+          var capMsg = document.createElement('div');
+          capMsg.style.cssText = 'color:#e03131;font-size:.7rem;padding:3px 4px;';
+          capMsg.textContent = '\u26A0 Tree capped at ' + LIMIT.TREE_MAX_NODES + ' nodes for performance.';
+          children.appendChild(capMsg);
+          break;
+        }
+        children.appendChild(makeTreeNode(childKeys[i], value[childKeys[i]], false));
+      }
+    }
+
+    if (expanded) buildChildren();
+
+    /* Toggle handler */
+    toggleBtn.addEventListener('click', function () {
+      var isNowExpanded = children.classList.toggle('hidden');
+      /* classList.toggle returns true when class was ADDED (i.e. now hidden) */
+      var open = !isNowExpanded; /* actually: hidden was toggled */
+      /* Re-check: if 'hidden' class is present → collapsed */
+      var nowHidden = children.classList.contains('hidden');
+      toggleBtn.textContent = nowHidden ? '\u25B6' : '\u25BC';
+      toggleBtn.setAttribute('aria-expanded', nowHidden ? 'false' : 'true');
+
+      /* Remove inline preview when expanding, add it back when collapsing */
+      var existingPreview = row.querySelector('.tree-preview');
+      if (!nowHidden) {
+        buildChildren();
+        if (existingPreview) row.removeChild(existingPreview);
+        /* Replace open bracket close marker */
+      } else {
+        /* Collapsed — add preview back if not present */
+        if (!row.querySelector('.tree-preview')) {
+          var newPreview = document.createElement('span');
+          newPreview.className = 'tree-preview';
+          newPreview.textContent = toSafeString(value);
+          newPreview.title = 'Click to expand';
+          /* Insert after countBadge */
+          var badge = row.querySelector('.tree-count');
+          if (badge && badge.nextSibling) {
+            row.insertBefore(newPreview, badge.nextSibling);
+          } else {
+            row.appendChild(newPreview);
+          }
+        }
+      }
     });
 
-    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-       2. DOM REFERENCES
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-    var ui = Object.freeze({
-        jsonInput     : document.getElementById('jsonInput'),
-        btnConvert    : document.getElementById('btnConvert'),
-        btnFormat     : document.getElementById('btnFormat'),
-        btnClear      : document.getElementById('btnClear'),
-        btnCopyCsv    : document.getElementById('btnCopyCsv'),
-        btnCopyHtml   : document.getElementById('btnCopyHtml'),
-        outputScroll  : document.getElementById('outputScroll'),
-        placeholder   : document.getElementById('placeholder'),
-        statusDot     : document.getElementById('statusDot'),
-        statusLabel   : document.getElementById('statusLabel'),
-        outputFooter  : document.getElementById('outputFooter'),
-        infoRows      : document.getElementById('infoRows'),
-        infoCols      : document.getElementById('infoCols'),
-        infoType      : document.getElementById('infoType'),
-        infoDepthWrap : document.getElementById('infoDepthWrap'),
-        infoDepth     : document.getElementById('infoDepth'),
-        resizeHandle  : document.getElementById('resizeHandle'),
-        editorPanel   : document.getElementById('editorPanel'),
-        workspace     : document.getElementById('workspace'),
-        breadcrumbBar : document.getElementById('breadcrumbBar'),
+    /* Clicking the preview span also expands */
+    row.addEventListener('click', function (e) {
+      if (e.target && e.target.classList.contains('tree-preview')) {
+        toggleBtn.click();
+      }
     });
 
-    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-       3. MUTABLE STATE
-       ─────────────────────────────────────────────────────────
-       navStack  — array of { data } frames pushed when the user
-                   expands into a nested value.  Each frame holds
-                   the data that was being displayed at that level.
-
-       navLabels — parallel array of string labels used to build
-                   the breadcrumb:
-                     navLabels[0] = 'Root'  (always)
-                     navLabels[n] = label of the nth expansion
-                   length === navStack.length + 1  (when expanded)
-
-       Invariant: navStack.length === 0  ↔  navLabels.length === 0
-                  (both reset together by doConvert / doClear)
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-    var state = {
-        lastParsed : null,
-        exportMeta : null,
-        navStack   : [],
-        navLabels  : [],
-    };
-
-    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-       4. UTILITIES
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-
-    /** toSafeString — used ONLY for preview snippets in cells.
-     *  Output always goes to textContent, never innerHTML. */
-    function toSafeString(val) {
-        if (val === null)      return 'null';
-        if (val === undefined) return '';
-        if (typeof val === 'object') {
-            try {
-                var s = JSON.stringify(val);
-                return s.length > LIMIT.MAX_CELL_CHARS
-                    ? s.slice(0, LIMIT.MAX_CELL_CHARS) + '\u2026'
-                    : s;
-            } catch (_) { return '[unserializable]'; }
-        }
-        var str = String(val);
-        return str.length > LIMIT.MAX_CELL_CHARS
-            ? str.slice(0, LIMIT.MAX_CELL_CHARS) + '\u2026'
-            : str;
-    }
-
-    /** checkDepth — iterative depth validator, prevents stack overflow. */
-    function checkDepth(root) {
-        var stack     = [{ node: root, depth: 0 }];
-        var nodeCount = 0;
-        while (stack.length) {
-            var frame = stack.pop();
-            nodeCount++;
-            if (nodeCount > LIMIT.MAX_DEPTH_NODES) break;
-            if (frame.depth > LIMIT.MAX_DEPTH) {
-                throw new Error(
-                    'JSON nesting depth exceeds the allowed maximum of '
-                    + LIMIT.MAX_DEPTH + ' levels.\n'
-                    + 'This limit exists to prevent browser memory issues.'
-                );
-            }
-            if (frame.node !== null && typeof frame.node === 'object') {
-                var keys = Object.keys(frame.node);
-                for (var i = 0; i < keys.length; i++) {
-                    stack.push({ node: frame.node[keys[i]], depth: frame.depth + 1 });
-                }
-            }
-        }
-    }
-
-    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-       5. STATUS BAR
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-    function setStatus(msg, type) {
-        ui.statusLabel.textContent = msg;
-        ui.statusLabel.className   = 'status-label' + (type ? ' ' + type : '');
-        ui.statusDot.className     = 'status-dot'   + (type ? ' ' + type : '');
-    }
-
-    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-       6. LIVE VALIDATION  (debounced 300 ms)
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-    var liveValidateTimer = null;
-    function liveValidate() {
-        clearTimeout(liveValidateTimer);
-        liveValidateTimer = setTimeout(function () {
-            var raw = ui.jsonInput.value;
-            if (!raw.trim()) { setStatus('Ready \u2014 paste JSON and press Convert', ''); return; }
-            if (raw.length > LIMIT.INPUT_BYTES) { setStatus('Input exceeds 5\u202fMB limit.', 'error'); return; }
-            try { JSON.parse(raw); setStatus('Valid JSON \u2713', 'ok'); }
-            catch (e) { setStatus(e.message, 'error'); }
-        }, 300);
-    }
-
-    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-       7. BREADCRUMB & NAVIGATION
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-
-    /**
-     * updateBreadcrumb
-     * Rebuilds the breadcrumb bar from state.navStack / state.navLabels.
-     *
-     * navLabels layout (when depth > 0):
-     *   [0] = 'Root'          → maps to navStack[0].data
-     *   [1] = first expansion → maps to navStack[1].data
-     *   …
-     *   [last] = current view → NOT in navStack (is state.lastParsed)
-     *
-     * Items except the last are rendered as clickable buttons.
-     * The last item is rendered as a non-interactive current indicator.
-     * ALL labels are set via textContent — XSS-safe.
-     */
-    function updateBreadcrumb() {
-        var nav = ui.breadcrumbBar;
-        while (nav.firstChild) nav.removeChild(nav.firstChild);
-
-        if (state.navStack.length === 0) {
-            nav.className = 'breadcrumb-bar';   // hide
-            ui.infoDepthWrap.style.display = 'none';
-            return;
-        }
-
-        nav.className = 'breadcrumb-bar visible';
-        ui.infoDepthWrap.style.display = 'flex';
-        ui.infoDepth.textContent = String(state.navStack.length);
-
-        state.navLabels.forEach(function (label, i) {
-            // Separator between items
-            if (i > 0) {
-                var sep = document.createElement('span');
-                sep.className = 'crumb-sep';
-                sep.setAttribute('aria-hidden', 'true');
-                sep.textContent = '\u203a';          // ›
-                nav.appendChild(sep);
-            }
-
-            var isLast = (i === state.navLabels.length - 1);
-
-            if (isLast) {
-                // Current, non-interactive level
-                var curr = document.createElement('span');
-                curr.className = 'crumb-current';
-                curr.setAttribute('aria-current', 'page');
-                curr.textContent = label;
-                nav.appendChild(curr);
-            } else {
-                var btn = document.createElement('button');
-                btn.type      = 'button';
-                btn.className = (i === 0) ? 'crumb-home' : 'crumb-btn';
-                // '\u2302' = ⌂ (house icon for Root)
-                btn.textContent = (i === 0) ? '\u2302 ' + label : label;
-                btn.title = 'Go back to: ' + label;
-                // Closure to capture the correct index
-                (function (idx) {
-                    btn.addEventListener('click', function () { doNavTo(idx); });
-                }(i));
-                nav.appendChild(btn);
-            }
-        });
-    }
-
-    /**
-     * doExpand
-     * Drills into a nested value, pushing the current view onto the stack.
-     *
-     * @param {*}      value - the nested JSON value to display
-     * @param {string} label - breadcrumb label for the new level
-     *
-     * Security: value is already-parsed, already-depth-validated JSON data.
-     * label is passed through textContent — never set as HTML.
-     */
-    function doExpand(value, label) {
-        // Seed 'Root' label on the very first expansion
-        if (state.navStack.length === 0) {
-            state.navLabels = ['Root'];
-        }
-        // Save current view
-        state.navStack.push({ data: state.lastParsed });
-        // Add label for the new level
-        state.navLabels.push(String(label));
-        // Switch to the expanded value
-        state.lastParsed = value;
-
-        renderOutput(value);
-        updateBreadcrumb();
-        ui.outputScroll.scrollTop = 0;
-    }
-
-    /**
-     * doNavTo
-     * Navigates back to a previous breadcrumb level.
-     *
-     * @param {number} labelIndex - index in navLabels to jump back to.
-     *                              navStack[labelIndex].data is the target.
-     */
-    function doNavTo(labelIndex) {
-        var entry = state.navStack[labelIndex];
-        state.lastParsed = entry.data;
-
-        if (labelIndex === 0) {
-            // All the way back to root — clear nav entirely
-            state.navStack  = [];
-            state.navLabels = [];
-        } else {
-            state.navStack  = state.navStack.slice(0, labelIndex);
-            state.navLabels = state.navLabels.slice(0, labelIndex + 1);
-        }
-
-        renderOutput(entry.data);
-        updateBreadcrumb();
-        ui.outputScroll.scrollTop = 0;
-    }
-
-    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-       8. DOM BUILDERS  (all user text via textContent)
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-
-    function makeTh(text) {
-        var th = document.createElement('th');
-        th.scope = 'col';
-        th.textContent = text;
-        return th;
-    }
-
-    function makeIndexTd(n) {
-        var td = document.createElement('td');
-        td.className   = 'col-idx';
-        td.textContent = String(n);
-        return td;
-    }
-
-    /**
-     * makeValueTd
-     * Creates a <td> containing a correctly typed, XSS-safe representation
-     * of value.  If value is a non-empty object or array, an Expand button
-     * is also appended; clicking it calls doExpand(value, keyLabel).
-     *
-     * @param {*}      value    - JSON value to display
-     * @param {string} keyLabel - breadcrumb label if this cell is expanded
-     *
-     * SECURITY: every string is written via .textContent — never innerHTML.
-     */
-    function makeValueTd(value, keyLabel) {
-        var lbl = (keyLabel != null) ? String(keyLabel) : 'value';
-        var td  = document.createElement('td');
-        var span, display, isArray, count, isEmpty, typeStr,
-            wrapper, preview, expandBtn;
-
-        if (value === null) {
-            span           = document.createElement('span');
-            span.className = 'v-null';
-            span.textContent = 'null';
-            td.appendChild(span);
-
-        } else if (value === undefined) {
-            span           = document.createElement('span');
-            span.className = 'v-null';
-            span.textContent = '\u2014';
-            td.appendChild(span);
-
-        } else if (typeof value === 'boolean') {
-            span           = document.createElement('span');
-            span.className = 'v-bool';
-            span.textContent = value ? 'true' : 'false';
-            td.appendChild(span);
-
-        } else if (typeof value === 'number') {
-            span           = document.createElement('span');
-            span.className = 'v-num';
-            span.textContent = String(value);
-            td.appendChild(span);
-
-        } else if (typeof value === 'string') {
-            span      = document.createElement('span');
-            span.className = 'v-str';
-            display   = value.length > LIMIT.MAX_CELL_CHARS
-                ? value.slice(0, LIMIT.MAX_CELL_CHARS) + '\u2026'
-                : value;
-            span.textContent = display;
-            if (value.length > LIMIT.MAX_CELL_CHARS) {
-                td.title = 'Truncated. Full length: ' + value.length + ' chars';
-            }
-            td.appendChild(span);
-
-        } else if (typeof value === 'object') {
-            isArray = Array.isArray(value);
-            count   = isArray ? value.length : Object.keys(value).length;
-            isEmpty = (count === 0);
-            typeStr = isArray ? 'Array' : 'Object';
-
-            // Wrapper holds the preview + optional expand button
-            wrapper           = document.createElement('div');
-            wrapper.className = 'v-obj-wrapper';
-
-            // JSON preview snippet (truncated, shown via textContent)
-            preview           = document.createElement('span');
-            preview.className = 'v-obj';
-            preview.textContent = toSafeString(value);
-            wrapper.appendChild(preview);
-
-            // Expand button — only for non-empty objects / arrays
-            if (!isEmpty) {
-                expandBtn           = document.createElement('button');
-                expandBtn.type      = 'button';
-                expandBtn.className = 'btn-expand';
-                // textContent: type, count, singular/plural — safe
-                expandBtn.textContent =
-                    '\u2295 Expand ' + typeStr
-                    + ' (' + count + '\u202f'
-                    + (isArray ? 'item' : 'key')
-                    + (count !== 1 ? 's' : '') + ')';
-                expandBtn.title =
-                    'Drill into this ' + typeStr.toLowerCase()
-                    + ' (' + count + ' '
-                    + (isArray ? 'item' : 'key')
-                    + (count !== 1 ? 's' : '') + ')';
-                // Closure captures the specific value & label for this cell
-                (function (v, l) {
-                    expandBtn.addEventListener('click', function () {
-                        doExpand(v, l);
-                    });
-                }(value, lbl));
-                wrapper.appendChild(expandBtn);
-            }
-
-            td.appendChild(wrapper);
-
-        } else {
-            // Catch-all for any exotic types (e.g. Symbols shouldn't appear
-            // in parsed JSON, but defensive fallback is harmless)
-            span = document.createElement('span');
-            span.textContent = String(value);
-            td.appendChild(span);
-        }
-
-        return td;
-    }
-
-    /** collectKeys — union of all keys across an array, capped at MAX_COLS. */
-    function collectKeys(arr) {
-        var seen = Object.create(null);
-        var keys = [];
-        for (var i = 0; i < arr.length && keys.length < LIMIT.MAX_COLS; i++) {
-            var item = arr[i];
-            if (item !== null && typeof item === 'object' && !Array.isArray(item)) {
-                var ks = Object.keys(item);
-                for (var j = 0; j < ks.length && keys.length < LIMIT.MAX_COLS; j++) {
-                    if (!seen[ks[j]]) { seen[ks[j]] = true; keys.push(ks[j]); }
-                }
-            }
-        }
-        return keys;
-    }
-
-    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-       9. TABLE BUILDERS
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-
-    function makeTable() {
-        var t = document.createElement('table');
-        t.className = 'json-table';
-        t.setAttribute('role', 'grid');
-        return t;
-    }
-
-    /** Array of objects → multi-column table.
-     *  Each object-/array-valued cell gets an Expand button
-     *  labelled with its column key. */
-    function buildArrayOfObjects(data) {
-        var headers = collectKeys(data);
-        var rows    = data.slice(0, LIMIT.MAX_ROWS);
-
-        if (headers.length === 0) { return buildPrimitiveArray(rows); }
-
-        var table = makeTable();
-        var thead = document.createElement('thead');
-        var hRow  = document.createElement('tr');
-        var idxTh = makeTh('#');
-        idxTh.style.width = '44px';
-        hRow.appendChild(idxTh);
-        headers.forEach(function (k) { hRow.appendChild(makeTh(k)); });
-        thead.appendChild(hRow);
-        table.appendChild(thead);
-
-        var tbody = document.createElement('tbody');
-        rows.forEach(function (item, i) {
-            var tr = document.createElement('tr');
-            tr.appendChild(makeIndexTd(i + 1));
-
-            if (item !== null && typeof item === 'object' && !Array.isArray(item)) {
-                // Pass column key as the breadcrumb label for each cell
-                headers.forEach(function (k) {
-                    tr.appendChild(makeValueTd(item[k], k));
-                });
-            } else {
-                // Mixed-type row — span all data columns
-                var td = makeValueTd(item, 'row\u202f' + (i + 1));
-                td.colSpan = headers.length;
-                tr.appendChild(td);
-            }
-            tbody.appendChild(tr);
-        });
-        table.appendChild(tbody);
-
-        state.exportMeta = { type: 'array-objects', headers: ['#'].concat(headers), rows: rows };
-        return table;
-    }
-
-    /** Single object → Key / Value table.
-     *  Object-/array-valued cells get an Expand button labelled with the key. */
-    function buildObject(obj) {
-        var keys  = Object.keys(obj);
-        var table = makeTable();
-
-        var thead = document.createElement('thead');
-        var hRow  = document.createElement('tr');
-        hRow.appendChild(makeTh('Key'));
-        hRow.appendChild(makeTh('Value'));
-        thead.appendChild(hRow);
-        table.appendChild(thead);
-
-        var tbody = document.createElement('tbody');
-        keys.slice(0, LIMIT.MAX_ROWS).forEach(function (k) {
-            var tr     = document.createElement('tr');
-            var keyTd  = document.createElement('td');
-            var keySpan = document.createElement('span');
-            keySpan.className   = 'v-str';
-            keySpan.textContent = k;
-            keyTd.appendChild(keySpan);
-            tr.appendChild(keyTd);
-            // Pass the key as the breadcrumb label for potential expansion
-            tr.appendChild(makeValueTd(obj[k], k));
-            tbody.appendChild(tr);
-        });
-        table.appendChild(tbody);
-
-        state.exportMeta = {
-            type: 'object',
-            headers: ['Key', 'Value'],
-            rows: keys.map(function (k) { return { Key: k, Value: obj[k] }; }),
-        };
-        return table;
-    }
-
-    /** Array of primitives (or nested arrays) → Index / Value table.
-     *  Nested-array / object items still get Expand buttons. */
-    function buildPrimitiveArray(data) {
-        var rows  = data.slice(0, LIMIT.MAX_ROWS);
-        var table = makeTable();
-
-        var thead = document.createElement('thead');
-        var hRow  = document.createElement('tr');
-        hRow.appendChild(makeTh('#'));
-        hRow.appendChild(makeTh('Value'));
-        thead.appendChild(hRow);
-        table.appendChild(thead);
-
-        var tbody = document.createElement('tbody');
-        rows.forEach(function (item, i) {
-            var tr = document.createElement('tr');
-            tr.appendChild(makeIndexTd(i + 1));
-            // Pass index as the breadcrumb label for potential expansion
-            tr.appendChild(makeValueTd(item, '[' + (i + 1) + ']'));
-            tbody.appendChild(tr);
-        });
-        table.appendChild(tbody);
-
-        state.exportMeta = { type: 'primitive-array', headers: ['#', 'Value'], rows: rows };
-        return table;
-    }
-
-    /** dispatchBuild — route to the correct builder for a given value. */
-    function dispatchBuild(data) {
-        if (Array.isArray(data)) {
-            if (data.length === 0) return null;
-            var hasObjects = data.some(function (x) {
-                return x !== null && typeof x === 'object';
-            });
-            return hasObjects ? buildArrayOfObjects(data) : buildPrimitiveArray(data);
-        }
-        if (data !== null && typeof data === 'object') {
-            return buildObject(data);
-        }
-        // Primitive root (number, boolean, string, null at top level)
-        var div   = document.createElement('div');
-        div.className = 'alert alert-info';
-        var lbl   = document.createElement('strong');
-        lbl.textContent = 'Primitive (' + typeof data + '): ';
-        var val   = document.createElement('span');
-        val.textContent = String(data);
-        div.appendChild(lbl);
-        div.appendChild(val);
-        state.exportMeta = null;
-        return div;
-    }
-
-    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-       10. OUTPUT RENDERING
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-
-    function clearOutput() {
-        while (ui.outputScroll.firstChild) {
-            ui.outputScroll.removeChild(ui.outputScroll.firstChild);
-        }
-    }
-
-    function renderOutput(data) {
-        clearOutput();
-        state.exportMeta = null;
-
-        if (Array.isArray(data) && data.length === 0) {
-            var emptyMsg       = document.createElement('div');
-            emptyMsg.className = 'alert alert-info';
-            emptyMsg.textContent = 'Empty array \u2014 no rows to display.';
-            ui.outputScroll.appendChild(emptyMsg);
-            setFooter(0, 0, 'Array (empty)');
-            return;
-        }
-
-        var element = dispatchBuild(data);
-        if (element) { ui.outputScroll.appendChild(element); }
-
-        // Truncation notice
-        if (Array.isArray(data) && data.length > LIMIT.MAX_ROWS) {
-            var notice       = document.createElement('div');
-            notice.className = 'alert alert-warn';
-            notice.textContent =
-                '\u26a0\ufe0f  Showing first '
-                + LIMIT.MAX_ROWS.toLocaleString()
-                + ' of '
-                + data.length.toLocaleString()
-                + ' rows. Export to CSV for the full dataset.';
-            ui.outputScroll.appendChild(notice);
-        }
-
-        // Column cap notice
-        if (!Array.isArray(data) || data.length > 0) {
-            var keys = collectKeys(Array.isArray(data) ? data : [data]);
-            if (keys.length >= LIMIT.MAX_COLS) {
-                var colNotice       = document.createElement('div');
-                colNotice.className = 'alert alert-warn';
-                colNotice.textContent =
-                    '\u26a0\ufe0f  Column display capped at '
-                    + LIMIT.MAX_COLS
-                    + '. Additional keys are omitted.';
-                ui.outputScroll.appendChild(colNotice);
-            }
-        }
-
-        // Footer stats
-        var rows = 0, cols = 0, type = '\u2014';
-        if (Array.isArray(data)) {
-            rows = Math.min(data.length, LIMIT.MAX_ROWS);
-            type = 'Array';
-            cols = collectKeys(data).length || 1;
-        } else if (data !== null && typeof data === 'object') {
-            rows = Math.min(Object.keys(data).length, LIMIT.MAX_ROWS);
-            cols = 2;
-            type = 'Object';
-        } else {
-            rows = 1; cols = 1;
-            type = typeof data;
-        }
-        setFooter(rows, cols, type);
-    }
-
-    function setFooter(rows, cols, type) {
-        ui.infoRows.textContent   = rows.toLocaleString();
-        ui.infoCols.textContent   = cols.toLocaleString();
-        ui.infoType.textContent   = type;
-        ui.outputFooter.className = 'output-footer visible';
-    }
-
-    function showParseError(msg) {
-        clearOutput();
-        var div       = document.createElement('div');
-        div.className = 'alert alert-error';
-        div.textContent = msg;
-        ui.outputScroll.appendChild(div);
-        ui.outputFooter.className = 'output-footer';
-    }
-
-    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-       11. MAIN ACTIONS
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-
-    function doConvert() {
-        var raw = ui.jsonInput.value;
-        if (!raw.trim()) { setStatus('No input \u2014 paste JSON first.', 'error'); return; }
-        if (raw.length > LIMIT.INPUT_BYTES) {
-            setStatus('Input exceeds 5\u202fMB security limit.', 'error');
-            showParseError(
-                'Input size (' + (raw.length / 1048576).toFixed(1)
-                + '\u202fMB) exceeds the 5\u202fMB limit.\n'
-                + 'Please reduce the size of your JSON.'
-            );
-            return;
-        }
-
-        var parsed;
-        try { parsed = JSON.parse(raw); }
-        catch (e) { setStatus(e.message, 'error'); showParseError(e.message); return; }
-
-        try { checkDepth(parsed); }
-        catch (e) { setStatus(e.message, 'error'); showParseError(e.message); return; }
-
-        // Reset navigation — new conversion starts fresh
-        state.navStack  = [];
-        state.navLabels = [];
-        updateBreadcrumb();
-
-        state.lastParsed = parsed;
-        renderOutput(parsed);
-        setStatus(
-            'Converted \u2713  \u2014  '
-            + (Array.isArray(parsed)
-                ? parsed.length.toLocaleString() + ' item(s)'
-                : typeof parsed === 'object' && parsed !== null
-                    ? Object.keys(parsed).length.toLocaleString() + ' key(s)'
-                    : 'primitive'),
-            'ok'
-        );
-    }
-
-    function doFormat() {
-        var raw = ui.jsonInput.value.trim();
-        if (!raw) return;
-        try {
-            var p = JSON.parse(raw);
-            ui.jsonInput.value = JSON.stringify(p, null, 2);
-            setStatus('Formatted \u2713', 'ok');
-        } catch (e) {
-            setStatus('Cannot format: ' + e.message, 'error');
-        }
-    }
-
-    function doClear() {
-        ui.jsonInput.value        = '';
-        state.lastParsed          = null;
-        state.exportMeta          = null;
-        state.navStack            = [];
-        state.navLabels           = [];
-        updateBreadcrumb();
-        clearOutput();
-        ui.outputScroll.appendChild(ui.placeholder);
-        ui.outputFooter.className = 'output-footer';
-        setStatus('Ready \u2014 paste JSON and press Convert', '');
-    }
-
-    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-       12. CSV GENERATION
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-
-    function csvEscape(val) {
-        var s = toSafeString(val);
-        if (s.indexOf(',')  !== -1 || s.indexOf('"') !== -1
-         || s.indexOf('\n') !== -1 || s.indexOf('\r') !== -1) {
-            return '"' + s.replace(/"/g, '""') + '"';
-        }
-        return s;
-    }
-
-    function generateCsv() {
-        var exp = state.exportMeta;
-        if (!exp) return null;
-        var lines = [exp.headers.map(csvEscape).join(',')];
-        if (exp.type === 'array-objects') {
-            var dh = exp.headers.slice(1);
-            exp.rows.forEach(function (row, i) {
-                var cells = [String(i + 1)];
-                if (row !== null && typeof row === 'object' && !Array.isArray(row)) {
-                    dh.forEach(function (k) { cells.push(csvEscape(row[k])); });
-                } else {
-                    cells.push(csvEscape(row));
-                }
-                lines.push(cells.join(','));
-            });
-        } else if (exp.type === 'object') {
-            exp.rows.forEach(function (r) {
-                lines.push([csvEscape(r.Key), csvEscape(r.Value)].join(','));
-            });
-        } else {
-            exp.rows.forEach(function (item, i) {
-                lines.push([String(i + 1), csvEscape(item)].join(','));
-            });
-        }
-        return lines.join('\r\n');
-    }
-
-    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-       13. HTML EXPORT
-       Security note: clone.outerHTML is safe here because every
-       value was written via textContent, so the browser has already
-       HTML-encoded all special characters (< → &lt; etc.).
-       Expand buttons are stripped from the clone since they depend
-       on JS that the exported file will not contain.
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-
-    function generateHtml() {
-        var tbl = ui.outputScroll.querySelector('.json-table');
-        if (!tbl) return null;
-
-        var clone = tbl.cloneNode(true);
-
-        // Remove expand buttons — they are non-functional without the JS
-        var btns = clone.querySelectorAll('.btn-expand');
-        for (var i = 0; i < btns.length; i++) {
-            btns[i].parentNode.removeChild(btns[i]);
-        }
-
-        return '<!DOCTYPE html>\n<html lang="en">\n<head>\n'
-            + '<meta charset="UTF-8">\n'
-            + '<meta name="viewport" content="width=device-width,initial-scale=1">\n'
-            + '<title>Exported Table</title>\n'
-            + '<style>\n'
-            + 'body{font-family:sans-serif;padding:20px;background:#f4f5fb}'
-            + 'table{border-collapse:collapse;width:100%;font-size:13px;'
-            +       'border-radius:8px;overflow:hidden;'
-            +       'box-shadow:0 2px 12px rgba(70,90,200,.1)}'
-            + 'th{background:#5c7cfa;color:#fff;padding:9px 13px;'
-            +    'text-align:left;font-weight:700}'
-            + 'td{padding:7px 13px;border:1px solid #d0d4e8;vertical-align:middle}'
-            + 'tr:nth-child(even){background:#eef0ff}'
-            + 'tr:hover{background:#dde3ff}'
-            + '.v-null{color:#868e96;font-style:italic}'
-            + '.v-bool{color:#7048e8;font-weight:700}'
-            + '.v-num{color:#1971c2}'
-            + '.v-str{color:#2f9e44}'
-            + '.v-obj{display:block;font-family:monospace;font-size:.8em;'
-            +         'background:#ede9f7;color:#5a3fa0;padding:3px 6px;'
-            +         'border-radius:4px;white-space:pre-wrap}'
-            + '.v-obj-wrapper{display:block}'
-            + '\n</style>\n</head>\n<body>\n'
-            + clone.outerHTML
-            + '\n</body>\n</html>';
-    }
-
-    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-       14. CLIPBOARD
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-
-    function copyText(text, label) {
-        if (!text) { showToast('Nothing to copy.', false); return; }
-        function onOk()   { showToast(label + ' copied to clipboard!', true);  }
-        function onFail() { showToast('Copy failed \u2014 please copy manually.', false); }
-
-        if (typeof navigator.clipboard !== 'undefined'
-                && typeof navigator.clipboard.writeText === 'function') {
-            navigator.clipboard.writeText(text).then(onOk, onFail);
-        } else {
-            try {
-                var ta           = document.createElement('textarea');
-                ta.value         = text;
-                ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;';
-                document.body.appendChild(ta);
-                ta.focus(); ta.select();
-                var ok = document.execCommand('copy');
-                document.body.removeChild(ta);
-                ok ? onOk() : onFail();
-            } catch (_) { onFail(); }
-        }
-    }
-
-    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-       15. TOAST NOTIFICATIONS
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-
-    function showToast(msg, ok) {
-        document.querySelectorAll('.toast').forEach(function (t) { t.remove(); });
-        var t = document.createElement('div');
-        t.className = 'toast ' + (ok ? 'ok' : 'fail');
-        t.textContent = msg;
-        t.setAttribute('role', 'alert');
-        t.setAttribute('aria-live', 'assertive');
-        document.body.appendChild(t);
-        setTimeout(function () { t.remove(); }, 2100);
-    }
-
-    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-       16. RESIZABLE PANELS
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-    (function () {
-        var dragging = false, startX = 0, startW = 0;
-
-        ui.resizeHandle.addEventListener('mousedown', function (e) {
-            dragging = true;
-            startX   = e.clientX;
-            startW   = ui.editorPanel.getBoundingClientRect().width;
-            ui.resizeHandle.classList.add('dragging');
-            document.body.style.cursor     = 'col-resize';
-            document.body.style.userSelect = 'none';
-            e.preventDefault();
-        });
-
-        document.addEventListener('mousemove', function (e) {
-            if (!dragging) return;
-            var totalW  = ui.workspace.getBoundingClientRect().width;
-            var handleW = ui.resizeHandle.offsetWidth;
-            var newW    = Math.min(Math.max(startW + (e.clientX - startX), 220), totalW - handleW - 220);
-            ui.editorPanel.style.flex = '0 0 ' + newW + 'px';
-        });
-
-        document.addEventListener('mouseup', function () {
-            if (!dragging) return;
-            dragging = false;
-            ui.resizeHandle.classList.remove('dragging');
-            document.body.style.cursor = document.body.style.userSelect = '';
-        });
-
-        ui.resizeHandle.addEventListener('keydown', function (e) {
-            var step    = e.shiftKey ? 60 : 20;
-            var cur     = ui.editorPanel.getBoundingClientRect().width;
-            var totalW  = ui.workspace.getBoundingClientRect().width;
-            var handleW = ui.resizeHandle.offsetWidth;
-            var newW    = cur;
-            if (e.key === 'ArrowLeft')  newW = Math.max(220, cur - step);
-            if (e.key === 'ArrowRight') newW = Math.min(totalW - handleW - 220, cur + step);
-            if (newW !== cur) { ui.editorPanel.style.flex = '0 0 ' + newW + 'px'; e.preventDefault(); }
-        });
-    }());
-
-    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-       17. TEXTAREA KEYBOARD SHORTCUTS
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-    ui.jsonInput.addEventListener('keydown', function (e) {
-        if (e.key === 'Tab') {
-            e.preventDefault();
-            var s = this.selectionStart, end = this.selectionEnd;
-            this.value = this.value.slice(0, s) + '  ' + this.value.slice(end);
-            this.selectionStart = this.selectionEnd = s + 2;
-            return;
-        }
-        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter')          { e.preventDefault(); doConvert(); return; }
-        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') { e.preventDefault(); doFormat();  }
+    node.appendChild(children);
+  }
+
+  return node;
+}
+
+/**
+ * buildTreeView
+ * Entry point — wraps the root value and prepends a small toolbar.
+ */
+function buildTreeView(data) {
+  treeNodeCount = 0; // reset cap counter
+
+  var container = document.createElement('div');
+
+  /* ── Toolbar: Expand All / Collapse All ── */
+  var toolbar = document.createElement('div');
+  toolbar.className = 'tree-toolbar';
+
+  var toolLabel = document.createElement('span');
+  toolLabel.className = 'tree-toolbar-label';
+  toolLabel.textContent = 'Tree View';
+  toolbar.appendChild(toolLabel);
+
+  var btnExpandAll = document.createElement('button');
+  btnExpandAll.type = 'button';
+  btnExpandAll.className = 'btn btn-format';
+  btnExpandAll.style.cssText = 'font-size:.68rem;padding:3px 10px;';
+  btnExpandAll.textContent = '\u25BC Expand All';
+
+  var btnCollapseAll = document.createElement('button');
+  btnCollapseAll.type = 'button';
+  btnCollapseAll.className = 'btn btn-export';
+  btnCollapseAll.style.cssText = 'font-size:.68rem;padding:3px 10px;';
+  btnCollapseAll.textContent = '\u25B6 Collapse All';
+
+  toolbar.appendChild(btnExpandAll);
+  toolbar.appendChild(btnCollapseAll);
+  container.appendChild(toolbar);
+
+  /* ── Root node ── */
+  var treeRoot = document.createElement('div');
+  treeRoot.className = 'tree-root';
+
+  /* Expand top level immediately for usability */
+  treeRoot.appendChild(makeTreeNode(null, data, true));
+  container.appendChild(treeRoot);
+
+  /* Expand All — toggle every hidden children div */
+  btnExpandAll.addEventListener('click', function () {
+    treeRoot.querySelectorAll('.tree-children.hidden').forEach(function (el) {
+      /* Simulate a toggle-btn click to trigger lazy build + preview removal */
+      var parentRow = el.previousElementSibling;
+      if (parentRow) {
+        var tb = parentRow.querySelector('.tree-toggle-btn');
+        if (tb) tb.click();
+      }
     });
+  });
 
-    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-       18. WIRE UP EVENTS
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-    ui.btnConvert.addEventListener('click',  doConvert);
-    ui.btnFormat.addEventListener('click',   doFormat);
-    ui.btnClear.addEventListener('click',    doClear);
-    ui.jsonInput.addEventListener('input',   liveValidate);
-    ui.btnCopyCsv.addEventListener('click',  function () { copyText(generateCsv(),  'CSV');  });
-    ui.btnCopyHtml.addEventListener('click', function () { copyText(generateHtml(), 'HTML'); });
+  /* Collapse All (except root) */
+  btnCollapseAll.addEventListener('click', function () {
+    var allChildren = treeRoot.querySelectorAll('.tree-children');
+    allChildren.forEach(function (el, idx) {
+      if (idx === 0) return; // keep root open
+      if (!el.classList.contains('hidden')) {
+        var parentRow = el.previousElementSibling;
+        if (parentRow) {
+          var tb = parentRow.querySelector('.tree-toggle-btn');
+          if (tb) tb.click();
+        }
+      }
+    });
+  });
+
+  return container;
+}
+
+/* ══════════════════════════════════════════════════════════
+   11. STATS ANALYSER
+   Walks the entire JSON tree iteratively and collects:
+   - total node count
+   - total key count
+   - max depth
+   - object / array / string / number / boolean / null counts
+   - key frequency map → top-N keys
+══════════════════════════════════════════════════════════ */
+function analyseJson(root) {
+  var stats = {
+    nodes    : 0,
+    keys     : 0,
+    depth    : 0,
+    objects  : 0,
+    arrays   : 0,
+    strings  : 0,
+    numbers  : 0,
+    booleans : 0,
+    nulls    : 0,
+    maxArray : 0,
+    keyFreq  : Object.create(null),
+  };
+
+  /* Iterative DFS */
+  var stack = [{ node: root, depth: 0 }];
+  while (stack.length) {
+    var frame = stack.pop();
+    var node  = frame.node;
+    var d     = frame.depth;
+
+    stats.nodes++;
+    if (d > stats.depth) stats.depth = d;
+
+    if (node === null) {
+      stats.nulls++;
+    } else if (typeof node === 'boolean') {
+      stats.booleans++;
+    } else if (typeof node === 'number') {
+      stats.numbers++;
+    } else if (typeof node === 'string') {
+      stats.strings++;
+    } else if (Array.isArray(node)) {
+      stats.arrays++;
+      if (node.length > stats.maxArray) stats.maxArray = node.length;
+      for (var i = 0; i < node.length; i++) {
+        stack.push({ node: node[i], depth: d + 1 });
+      }
+    } else if (typeof node === 'object') {
+      stats.objects++;
+      var ks = Object.keys(node);
+      stats.keys += ks.length;
+      for (var j = 0; j < ks.length; j++) {
+        var k = ks[j];
+        stats.keyFreq[k] = (stats.keyFreq[k] || 0) + 1;
+        stack.push({ node: node[k], depth: d + 1 });
+      }
+    }
+  }
+  return stats;
+}
+
+/* ══════════════════════════════════════════════════════════
+   12. STATS PANEL BUILDER
+══════════════════════════════════════════════════════════ */
+function buildStatsPanel(data) {
+  var panel = ui.statsPanel;
+
+  /* Clear everything below the fixed header row */
+  while (panel.children.length > 1) panel.removeChild(panel.lastChild);
+
+  if (data === null || data === undefined) {
+    var noData = document.createElement('div');
+    noData.className = 'stats-nodata';
+    noData.textContent = 'Convert some JSON first to see statistics.';
+    panel.appendChild(noData);
+    return;
+  }
+
+  var s = analyseJson(data);
+
+  /* ── Top metrics row ── */
+  var metrics = [
+    { label: 'NODES',     value: s.nodes },
+    { label: 'KEYS',      value: s.keys },
+    { label: 'DEPTH',     value: s.depth },
+    { label: 'OBJECTS',   value: s.objects },
+    { label: 'ARRAYS',    value: s.arrays },
+    { label: 'MAX ARRAY', value: s.maxArray },
+  ];
+
+  var metricsRow = document.createElement('div');
+  metricsRow.className = 'stats-metrics';
+  metrics.forEach(function (m) {
+    var cell = document.createElement('div');
+    cell.className = 'stats-metric';
+    var lbl = document.createElement('div');
+    lbl.className = 'stats-metric-label';
+    lbl.textContent = m.label;
+    var val = document.createElement('div');
+    val.className = 'stats-metric-value';
+    val.textContent = m.value.toLocaleString();
+    cell.appendChild(lbl);
+    cell.appendChild(val);
+    metricsRow.appendChild(cell);
+  });
+  panel.appendChild(metricsRow);
+
+  /* ── Body: two columns ── */
+  var body = document.createElement('div');
+  body.className = 'stats-body';
+
+  /* ── Left col: Value Types bar chart ── */
+  var leftCol = document.createElement('div');
+  leftCol.className = 'stats-col';
+  var leftTitle = document.createElement('div');
+  leftTitle.className = 'stats-col-title';
+  leftTitle.textContent = 'VALUE TYPES';
+  leftCol.appendChild(leftTitle);
+
+  var totalValues = s.objects + s.arrays + s.strings + s.numbers + s.booleans + s.nulls;
+  var typeRows = [
+    { label: 'Objects',  count: s.objects  },
+    { label: 'Arrays',   count: s.arrays   },
+    { label: 'Strings',  count: s.strings  },
+    { label: 'Numbers',  count: s.numbers  },
+    { label: 'Booleans', count: s.booleans },
+    { label: 'Nulls',    count: s.nulls    },
+  ];
+  typeRows.forEach(function (t) {
+    var pct = totalValues > 0 ? (t.count / totalValues) * 100 : 0;
+    var row = document.createElement('div');
+    row.className = 'vt-row';
+
+    var lbl = document.createElement('span');
+    lbl.className = 'vt-label';
+    lbl.textContent = t.label;
+
+    var track = document.createElement('div');
+    track.className = 'vt-bar-track';
+    var fill = document.createElement('div');
+    fill.className = 'vt-bar-fill';
+    /* Set width after appending so CSS transition fires */
+    fill.style.width = '0%';
+    track.appendChild(fill);
+
+    var cnt = document.createElement('span');
+    cnt.className = 'vt-count';
+    cnt.textContent = t.count.toLocaleString();
+
+    row.appendChild(lbl);
+    row.appendChild(track);
+    row.appendChild(cnt);
+    leftCol.appendChild(row);
+
+    /* Trigger bar animation on next frame */
+    requestAnimationFrame(function () {
+      fill.style.width = pct.toFixed(1) + '%';
+    });
+  });
+
+  /* ── Right col: Top Keys ── */
+  var rightCol = document.createElement('div');
+  rightCol.className = 'stats-col';
+  var rightTitle = document.createElement('div');
+  rightTitle.className = 'stats-col-title';
+  rightTitle.textContent = 'TOP KEYS';
+  rightCol.appendChild(rightTitle);
+
+  /* Sort key frequency map descending, take top N */
+  var keyEntries = Object.keys(s.keyFreq).map(function (k) {
+    return { key: k, count: s.keyFreq[k] };
+  });
+  keyEntries.sort(function (a, b) { return b.count - a.count; });
+  var topKeys = keyEntries.slice(0, LIMIT.STATS_TOP_KEYS);
+
+  if (topKeys.length === 0) {
+    var noKeys = document.createElement('div');
+    noKeys.style.cssText = 'color:#6c7086;font-size:.78rem;margin-top:8px;';
+    noKeys.textContent = 'No object keys found.';
+    rightCol.appendChild(noKeys);
+  } else {
+    topKeys.forEach(function (entry) {
+      var row = document.createElement('div');
+      row.className = 'topkey-row';
+
+      var name = document.createElement('span');
+      name.className = 'topkey-name';
+      name.textContent = entry.key;
+      name.title = entry.key; // tooltip for truncated keys
+
+      var cnt = document.createElement('span');
+      cnt.className = 'topkey-count';
+      cnt.textContent = entry.count.toLocaleString();
+
+      row.appendChild(name);
+      row.appendChild(cnt);
+      rightCol.appendChild(row);
+    });
+  }
+
+  body.appendChild(leftCol);
+  body.appendChild(rightCol);
+  panel.appendChild(body);
+}
+
+/* ══════════════════════════════════════════════════════════
+   13. OUTPUT RENDERING
+══════════════════════════════════════════════════════════ */
+function clearOutput() {
+  while (ui.outputScroll.firstChild) {
+    ui.outputScroll.removeChild(ui.outputScroll.firstChild);
+  }
+}
+
+function renderOutput(data) {
+  clearOutput();
+  state.exportMeta = null;
+
+  /* ── Tree mode ── */
+  if (state.viewMode === 'tree') {
+    /* Tree nav breadcrumb not applicable — hide it */
+    ui.breadcrumbBar.className = 'breadcrumb-bar';
+
+    if (data === null || data === undefined) {
+      var nullMsg = document.createElement('div');
+      nullMsg.className = 'alert alert-info';
+      nullMsg.textContent = 'Nothing to display.';
+      ui.outputScroll.appendChild(nullMsg);
+      return;
+    }
+    ui.outputScroll.appendChild(buildTreeView(data));
+    /* Footer in tree mode shows structural counts */
+    var isArr  = Array.isArray(data);
+    var isObj  = (!isArr && data !== null && typeof data === 'object');
+    var rows   = isArr ? data.length : (isObj ? Object.keys(data).length : 1);
+    var type   = isArr ? 'Array' : (isObj ? 'Object' : typeof data);
+    setFooter(rows, isArr ? (collectKeys(data).length || 1) : (isObj ? 2 : 1), type);
+    return;
+  }
+
+  /* ── Table mode ── */
+  if (Array.isArray(data) && data.length === 0) {
+    var emptyMsg = document.createElement('div');
+    emptyMsg.className = 'alert alert-info';
+    emptyMsg.textContent = 'Empty array \u2014 no rows to display.';
+    ui.outputScroll.appendChild(emptyMsg);
+    setFooter(0, 0, 'Array (empty)');
+    return;
+  }
+
+  var element = dispatchBuild(data);
+  if (element) ui.outputScroll.appendChild(element);
+
+  /* Truncation notice */
+  if (Array.isArray(data) && data.length > LIMIT.MAX_ROWS) {
+    var notice = document.createElement('div');
+    notice.className = 'alert alert-warn';
+    notice.textContent =
+      '\u26a0\ufe0f Showing first '
+      + LIMIT.MAX_ROWS.toLocaleString()
+      + ' of ' + data.length.toLocaleString()
+      + ' rows. Export to CSV for the full dataset.';
+    ui.outputScroll.appendChild(notice);
+  }
+
+  /* Column cap notice */
+  if (!Array.isArray(data) || data.length > 0) {
+    var keys = collectKeys(Array.isArray(data) ? data : [data]);
+    if (keys.length >= LIMIT.MAX_COLS) {
+      var colNotice = document.createElement('div');
+      colNotice.className = 'alert alert-warn';
+      colNotice.textContent =
+        '\u26a0\ufe0f Column display capped at '
+        + LIMIT.MAX_COLS + '. Additional keys are omitted.';
+      ui.outputScroll.appendChild(colNotice);
+    }
+  }
+
+  /* Footer stats */
+  var rows2 = 0, cols = 0, type2 = '\u2014';
+  if (Array.isArray(data)) {
+    rows2 = Math.min(data.length, LIMIT.MAX_ROWS);
+    type2 = 'Array';
+    cols  = collectKeys(data).length || 1;
+  } else if (data !== null && typeof data === 'object') {
+    rows2 = Math.min(Object.keys(data).length, LIMIT.MAX_ROWS);
+    cols  = 2;
+    type2 = 'Object';
+  } else {
+    rows2 = 1; cols = 1; type2 = typeof data;
+  }
+  setFooter(rows2, cols, type2);
+}
+
+function setFooter(rows, cols, type) {
+  ui.infoRows.textContent = rows.toLocaleString();
+  ui.infoCols.textContent = cols.toLocaleString();
+  ui.infoType.textContent = type;
+  ui.outputFooter.className = 'output-footer visible';
+}
+
+function showParseError(msg) {
+  clearOutput();
+  var div = document.createElement('div');
+  div.className = 'alert alert-error';
+  div.textContent = msg;
+  ui.outputScroll.appendChild(div);
+  ui.outputFooter.className = 'output-footer';
+}
+
+/* ══════════════════════════════════════════════════════════
+   14. MAIN ACTIONS
+══════════════════════════════════════════════════════════ */
+function doConvert() {
+  var raw = ui.jsonInput.value;
+  if (!raw.trim()) { setStatus('No input \u2014 paste JSON first.', 'error'); return; }
+  if (raw.length > LIMIT.INPUT_BYTES) {
+    setStatus('Input exceeds 5\u202fMB security limit.', 'error');
+    showParseError(
+      'Input size (' + (raw.length / 1048576).toFixed(1)
+      + '\u202fMB) exceeds the 5\u202fMB limit.\n'
+      + 'Please reduce the size of your JSON.'
+    );
+    return;
+  }
+
+  var parsed;
+  try { parsed = JSON.parse(raw); }
+  catch (e) { setStatus(e.message, 'error'); showParseError(e.message); return; }
+
+  try { checkDepth(parsed); }
+  catch (e) { setStatus(e.message, 'error'); showParseError(e.message); return; }
+
+  /* Reset navigation */
+  state.navStack  = [];
+  state.navLabels = [];
+  updateBreadcrumb();
+
+  state.lastParsed = parsed;
+  renderOutput(parsed);
+  setStatus(
+    'Converted \u2713 \u2014 '
+    + (Array.isArray(parsed)
+      ? parsed.length.toLocaleString() + ' item(s)'
+      : typeof parsed === 'object' && parsed !== null
+        ? Object.keys(parsed).length.toLocaleString() + ' key(s)'
+        : 'primitive'),
+    'ok'
+  );
+}
+
+function doFormat() {
+  var raw = ui.jsonInput.value.trim();
+  if (!raw) return;
+  try {
+    var p = JSON.parse(raw);
+    ui.jsonInput.value = JSON.stringify(p, null, 2);
+    setStatus('Formatted \u2713', 'ok');
+  } catch (e) {
+    setStatus('Cannot format: ' + e.message, 'error');
+  }
+}
+
+function doClear() {
+  ui.jsonInput.value = '';
+  state.lastParsed  = null;
+  state.exportMeta  = null;
+  state.navStack    = [];
+  state.navLabels   = [];
+  updateBreadcrumb();
+  clearOutput();
+  ui.outputScroll.appendChild(ui.placeholder);
+  ui.outputFooter.className = 'output-footer';
+  setStatus('Ready \u2014 paste JSON and press Convert', '');
+}
+
+/* ══════════════════════════════════════════════════════════
+   15. VIEW MODE SWITCHING
+══════════════════════════════════════════════════════════ */
+function setViewMode(mode) {
+  state.viewMode = mode;
+
+  ui.btnViewTable.classList.toggle('active', mode === 'table');
+  ui.btnViewTable.setAttribute('aria-pressed', mode === 'table' ? 'true' : 'false');
+  ui.btnViewTree.classList.toggle('active', mode === 'tree');
+  ui.btnViewTree.setAttribute('aria-pressed', mode === 'tree' ? 'true' : 'false');
+
+  /* Breadcrumbs only apply to table mode */
+  if (mode === 'tree') {
+    state.navStack  = [];
+    state.navLabels = [];
+    updateBreadcrumb();
+  }
+
+  if (state.lastParsed !== null) {
+    renderOutput(state.lastParsed);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+   16. STATS MODAL OPEN / CLOSE
+══════════════════════════════════════════════════════════ */
+function openStats() {
+  buildStatsPanel(state.lastParsed);
+  ui.statsBackdrop.className = 'stats-backdrop visible';
+  ui.statsClose.focus();
+}
+function closeStats() {
+  ui.statsBackdrop.className = 'stats-backdrop';
+  ui.btnStats.focus();
+}
+
+/* ══════════════════════════════════════════════════════════
+   17. CSV GENERATION
+══════════════════════════════════════════════════════════ */
+function csvEscape(val) {
+  var s = toSafeString(val);
+  if (s.indexOf(',')  !== -1 || s.indexOf('"') !== -1
+   || s.indexOf('\n') !== -1 || s.indexOf('\r') !== -1) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+function generateCsv() {
+  var exp = state.exportMeta;
+  if (!exp) return null;
+  var lines = [ exp.headers.map(csvEscape).join(',') ];
+  if (exp.type === 'array-objects') {
+    var dh = exp.headers.slice(1);
+    exp.rows.forEach(function (row, i) {
+      var cells = [String(i + 1)];
+      if (row !== null && typeof row === 'object' && !Array.isArray(row)) {
+        dh.forEach(function (k) { cells.push(csvEscape(row[k])); });
+      } else {
+        cells.push(csvEscape(row));
+      }
+      lines.push(cells.join(','));
+    });
+  } else if (exp.type === 'object') {
+    exp.rows.forEach(function (r) {
+      lines.push([ csvEscape(r.Key), csvEscape(r.Value) ].join(','));
+    });
+  } else {
+    exp.rows.forEach(function (item, i) {
+      lines.push([ String(i + 1), csvEscape(item) ].join(','));
+    });
+  }
+  return lines.join('\r\n');
+}
+
+/* ══════════════════════════════════════════════════════════
+   18. HTML EXPORT
+══════════════════════════════════════════════════════════ */
+function generateHtml() {
+  var tbl = ui.outputScroll.querySelector('.json-table');
+  if (!tbl) return null;
+  var clone = tbl.cloneNode(true);
+  clone.querySelectorAll('.btn-expand').forEach(function (b) {
+    b.parentNode.removeChild(b);
+  });
+  return '<!DOCTYPE html>\n<html lang="en">\n<head>\n'
+    + '<meta charset="utf-8">\n'
+    + '<meta content="width=device-width,initial-scale=1" name="viewport">\n'
+    + '<title>Exported Table</title>\n<style>\n'
+    + 'body{font-family:sans-serif;padding:20px;background:#f4f5fb}'
+    + 'table{border-collapse:collapse;width:100%;font-size:13px;'
+    + 'border-radius:8px;overflow:hidden;box-shadow:0 2px 12px rgba(70,90,200,.1)}'
+    + 'th{background:#5c7cfa;color:#fff;padding:9px 13px;text-align:left;font-weight:700}'
+    + 'td{padding:7px 13px;border:1px solid #d0d4e8;vertical-align:middle}'
+    + 'tr:nth-child(even){background:#eef0ff}'
+    + 'tr:hover{background:#dde3ff}'
+    + '.v-null{color:#868e96;font-style:italic}'
+    + '.v-bool{color:#7048e8;font-weight:700}'
+    + '.v-num{color:#1971c2}'
+    + '.v-str{color:#2f9e44}'
+    + '.v-obj{display:block;font-family:monospace;font-size:.8em;'
+    + 'background:#ede9f7;color:#5a3fa0;padding:3px 6px;border-radius:4px;white-space:pre-wrap}'
+    + '\n</style>\n</head>\n<body>\n'
+    + clone.outerHTML
+    + '\n</body>\n</html>';
+}
+
+/* ══════════════════════════════════════════════════════════
+   19. CLIPBOARD
+══════════════════════════════════════════════════════════ */
+function copyText(text, label) {
+  if (!text) { showToast('Nothing to copy', false); return; }
+  function onOk()   { showToast(label + ' copied to clipboard!', true); }
+  function onFail() { showToast('Copy failed \u2014 please copy manually', false); }
+
+  if (typeof navigator.clipboard !== 'undefined'
+   && typeof navigator.clipboard.writeText === 'function') {
+    navigator.clipboard.writeText(text).then(onOk, onFail);
+  } else {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;';
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      var ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      ok ? onOk() : onFail();
+    } catch (_) { onFail(); }
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+   20. TOAST NOTIFICATIONS
+══════════════════════════════════════════════════════════ */
+function showToast(msg, ok) {
+  document.querySelectorAll('.toast').forEach(function (t) { t.remove(); });
+  var t = document.createElement('div');
+  t.className = 'toast ' + (ok ? 'ok' : 'fail');
+  t.textContent = msg;
+  t.setAttribute('role', 'alert');
+  t.setAttribute('aria-live', 'assertive');
+  document.body.appendChild(t);
+  setTimeout(function () { t.remove(); }, 2100);
+}
+
+/* ══════════════════════════════════════════════════════════
+   21. RESIZABLE PANELS
+══════════════════════════════════════════════════════════ */
+(function () {
+  var dragging = false, startX = 0, startW = 0;
+  ui.resizeHandle.addEventListener('mousedown', function (e) {
+    dragging = true;
+    startX   = e.clientX;
+    startW   = ui.editorPanel.getBoundingClientRect().width;
+    ui.resizeHandle.classList.add('dragging');
+    document.body.style.cursor     = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', function (e) {
+    if (!dragging) return;
+    var totalW  = ui.workspace.getBoundingClientRect().width;
+    var handleW = ui.resizeHandle.offsetWidth;
+    var newW    = Math.min(Math.max(startW + (e.clientX - startX), 220), totalW - handleW - 220);
+    ui.editorPanel.style.flex = '0 0 ' + newW + 'px';
+  });
+  document.addEventListener('mouseup', function () {
+    if (!dragging) return;
+    dragging = false;
+    ui.resizeHandle.classList.remove('dragging');
+    document.body.style.cursor = document.body.style.userSelect = '';
+  });
+  ui.resizeHandle.addEventListener('keydown', function (e) {
+    var step   = e.shiftKey ? 60 : 20;
+    var cur    = ui.editorPanel.getBoundingClientRect().width;
+    var totalW = ui.workspace.getBoundingClientRect().width;
+    var handleW = ui.resizeHandle.offsetWidth;
+    var newW   = cur;
+    if (e.key === 'ArrowLeft')  newW = Math.max(220, cur - step);
+    if (e.key === 'ArrowRight') newW = Math.min(totalW - handleW - 220, cur + step);
+    if (newW !== cur) { ui.editorPanel.style.flex = '0 0 ' + newW + 'px'; e.preventDefault(); }
+  });
+}());
+
+/* ══════════════════════════════════════════════════════════
+   22. TEXTAREA KEYBOARD SHORTCUTS
+══════════════════════════════════════════════════════════ */
+ui.jsonInput.addEventListener('keydown', function (e) {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    var s = this.selectionStart, end = this.selectionEnd;
+    this.value = this.value.slice(0, s) + '  ' + this.value.slice(end);
+    this.selectionStart = this.selectionEnd = s + 2;
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter')                          { e.preventDefault(); doConvert(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toUpperCase() === 'F') { e.preventDefault(); doFormat(); }
+});
+
+/* ══════════════════════════════════════════════════════════
+   23. WIRE UP ALL EVENTS
+══════════════════════════════════════════════════════════ */
+ui.btnConvert.addEventListener('click', doConvert);
+ui.btnFormat.addEventListener('click',  doFormat);
+ui.btnClear.addEventListener('click',   doClear);
+ui.jsonInput.addEventListener('input',  liveValidate);
+
+ui.btnCopyCsv.addEventListener('click',  function () { copyText(generateCsv(),  'CSV'); });
+ui.btnCopyHtml.addEventListener('click', function () { copyText(generateHtml(), 'HTML'); });
+
+/* View toggle */
+ui.btnViewTable.addEventListener('click', function () { setViewMode('table'); });
+ui.btnViewTree.addEventListener('click',  function () { setViewMode('tree');  });
+
+/* Stats modal */
+ui.btnStats.addEventListener('click', openStats);
+ui.statsClose.addEventListener('click', closeStats);
+
+/* Close stats on backdrop click */
+ui.statsBackdrop.addEventListener('click', function (e) {
+  if (e.target === ui.statsBackdrop) closeStats();
+});
+
+/* Close stats on Escape */
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && ui.statsBackdrop.classList.contains('visible')) {
+    closeStats();
+  }
+});
 
 }());
 </script>
